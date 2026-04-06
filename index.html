@@ -1,0 +1,2194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Special CAR — Gestión de Horarios</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --blue:#2d4a9e;--blue-dark:#1e3278;--blue-deep:#172660;
+  --blue-mid:#3a5bb5;--blue-light:#4e72cc;
+  --blue-pale:#dce6f8;--blue-ghost:#eef3fc;
+  --white:#fff;--off-white:#f4f7fd;
+  --grey-light:#e4eaf6;--grey-mid:#b8c4e0;--grey:#8090b8;
+  --text:#1a2550;--text2:#3d4f7c;--text3:#7080a8;
+  --success:#1a9e6e;--success-bg:#e8f8f3;
+  --warning:#d97706;--warning-bg:#fef3e2;
+  --danger:#c0392b;--danger-bg:#fdecea;
+  --radius:14px;--radius-sm:9px;--radius-xs:6px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:var(--off-white);color:var(--text);min-height:100vh;}
+
+/* SPLASH */
+#splashScreen{position:fixed;inset:0;z-index:9999;background:linear-gradient(155deg,var(--blue-dark),var(--blue-deep));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .4s;}
+#splashScreen.fade{opacity:0;pointer-events:none;}
+.splash-spin{width:22px;height:22px;border:2px solid rgba(255,255,255,.2);border-top-color:rgba(255,255,255,.8);border-radius:50%;animation:spin .8s linear infinite;}
+.splash-txt{font-size:11px;color:rgba(255,255,255,.5);letter-spacing:2px;text-transform:uppercase;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* LOGIN */
+#loginScreen{display:none;min-height:100vh;background:linear-gradient(155deg,var(--blue-dark),var(--blue-deep));overflow:hidden;position:relative;}
+.ld{position:absolute;border-radius:50%;border:1px solid rgba(255,255,255,.05);pointer-events:none;}
+.ld1{width:560px;height:560px;top:-130px;right:-130px;}
+.ld2{width:360px;height:360px;bottom:-70px;left:-70px;}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;position:relative;z-index:1;}
+.login-card{background:var(--white);border-radius:20px;padding:42px 36px;width:100%;max-width:390px;box-shadow:0 32px 80px rgba(0,0,0,.35);}
+.login-logo-wrap{text-align:center;margin-bottom:22px;}
+.login-title{font-size:20px;font-weight:800;color:var(--text);text-align:center;margin-bottom:3px;}
+.login-sub{font-size:12px;color:var(--text3);text-align:center;margin-bottom:24px;}
+.field-group{margin-bottom:14px;}
+.field-label{display:block;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;}
+.field-input{width:100%;background:var(--off-white);border:1.5px solid var(--grey-light);border-radius:var(--radius-xs);padding:11px 13px;color:var(--text);font-family:'Inter',sans-serif;font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;}
+.field-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(45,74,158,.1);background:var(--white);}
+.field-input::placeholder{color:var(--grey);}
+.btn-login{width:100%;background:linear-gradient(135deg,var(--blue-mid),var(--blue-dark));color:var(--white);border:none;border-radius:var(--radius-xs);padding:13px;font-family:'Inter',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;margin-top:4px;box-shadow:0 4px 16px rgba(45,74,158,.35);}
+.btn-login:hover{opacity:.92;transform:translateY(-1px);}
+.btn-login:disabled{opacity:.6;cursor:not-allowed;transform:none;}
+.login-loading{display:none;align-items:center;justify-content:center;gap:8px;margin-top:11px;font-size:12px;color:var(--text3);}
+.login-loading.show{display:flex;}
+.spinner-s{width:14px;height:14px;border:2px solid var(--grey-light);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;}
+.login-error{display:none;background:var(--danger-bg);border:1px solid rgba(192,57,43,.25);border-radius:var(--radius-xs);padding:9px 13px;font-size:12px;color:var(--danger);margin-top:10px;}
+.admin-link{text-align:center;margin-top:14px;font-size:11px;color:var(--text3);}
+.admin-link a{color:var(--blue);font-weight:600;cursor:pointer;text-decoration:none;}
+
+/* APP */
+#appScreen{display:none;}
+.app-layout{display:grid;grid-template-columns:244px 1fr;min-height:100vh;}
+
+/* SIDEBAR */
+.sidebar{background:linear-gradient(180deg,var(--blue-dark),var(--blue-deep));display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;}
+.sidebar-header{padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:10px;}
+.sb-brand{display:flex;flex-direction:column;line-height:1.25;}
+.sb-brand-main{font-size:14px;font-weight:800;color:var(--white);}
+.sb-brand-sub{font-size:9px;color:rgba(255,255,255,.33);text-transform:uppercase;letter-spacing:1.5px;}
+.sidebar-nav{padding:10px 10px;flex:1;}
+.nav-sec{font-size:9px;font-weight:700;color:rgba(255,255,255,.28);text-transform:uppercase;letter-spacing:2px;padding:0 10px;margin:12px 0 4px;}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:var(--radius-xs);cursor:pointer;font-size:13px;font-weight:500;color:rgba(255,255,255,.55);transition:all .15s;margin-bottom:1px;user-select:none;}
+.nav-item:hover{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9);}
+.nav-item.active{background:rgba(255,255,255,.14);color:var(--white);font-weight:600;}
+.nav-icon{font-size:14px;width:16px;text-align:center;opacity:.7;}
+.nav-item.active .nav-icon{opacity:1;}
+.sb-driver{margin:6px 10px 8px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius-xs);padding:11px;}
+.drv-avatar{width:30px;height:30px;background:linear-gradient(135deg,#5a80d8,var(--blue));border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:var(--white);border:2px solid rgba(255,255,255,.2);margin-bottom:5px;}
+.drv-name{font-size:12px;font-weight:600;color:var(--white);}
+.drv-plate{font-size:10px;color:rgba(255,255,255,.38);margin-top:1px;font-family:monospace;letter-spacing:.5px;}
+.btn-logout{margin:0 10px 10px;background:none;border:1px solid rgba(255,255,255,.12);border-radius:var(--radius-xs);padding:8px 10px;color:rgba(255,255,255,.42);font-family:'Inter',sans-serif;font-size:12px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:7px;}
+.btn-logout:hover{border-color:rgba(255,100,100,.4);color:rgba(255,120,120,.8);}
+
+/* MAIN */
+.main-content{padding:26px 30px;overflow-y:auto;}
+.page{display:none;}
+.page.active{display:block;animation:fadeIn .18s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.page-header{margin-bottom:22px;}
+.page-title{font-size:21px;font-weight:800;color:var(--text);margin-bottom:3px;}
+.page-sub{font-size:12px;color:var(--text3);}
+
+/* CARDS */
+.card{background:var(--white);border:1px solid var(--grey-light);border-radius:var(--radius);padding:18px;box-shadow:0 2px 8px rgba(29,50,120,.05);}
+.card-title{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.9px;margin-bottom:14px;display:flex;align-items:center;gap:6px;}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+/* STAT CARDS */
+.stat-card{background:var(--white);border-radius:var(--radius);padding:16px;border:1px solid var(--grey-light);box-shadow:0 2px 8px rgba(29,50,120,.05);position:relative;overflow:hidden;}
+.stat-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.stat-card.blue::after{background:linear-gradient(90deg,var(--blue),var(--blue-mid));}
+.stat-card.green::after{background:linear-gradient(90deg,var(--success),#22c55e);}
+.stat-card.navy::after{background:linear-gradient(90deg,var(--blue-deep),var(--blue));}
+.stat-label{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.9px;}
+.stat-value{font-size:26px;font-weight:800;color:var(--text);margin:4px 0;}
+.stat-sub{font-size:11px;color:var(--text3);}
+
+/* TABS */
+.tabs{display:flex;gap:2px;background:var(--grey-light);border-radius:7px;padding:3px;margin-bottom:16px;width:fit-content;}
+.tab-btn{padding:6px 15px;border-radius:5px;border:none;background:none;color:var(--text3);font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;}
+.tab-btn.active{background:var(--white);color:var(--text);box-shadow:0 1px 4px rgba(29,50,120,.08);}
+
+/* FORM */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+.form-row.single{grid-template-columns:1fr;}
+.form-field label{display:block;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:5px;}
+.form-field input,
+.form-field select{width:100%;background:var(--off-white);border:1.5px solid var(--grey-light);border-radius:var(--radius-xs);padding:10px 11px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;transition:border-color .2s;}
+.form-field input:focus,.form-field select:focus{border-color:var(--blue);background:var(--white);}
+.locality-sel{width:100%;background:var(--off-white);border:1.5px solid var(--grey-light);border-radius:var(--radius-xs);padding:10px 11px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;cursor:pointer;transition:border-color .2s;}
+.locality-sel:focus{border-color:var(--blue);background:var(--white);}
+
+/* ══ HOUR PICKER ══ */
+.picker-section{margin:14px 0;}
+.picker-label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:8px;display:block;}
+.picker-hint{font-size:11px;color:var(--text3);margin-bottom:8px;}
+
+.hour-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px;}
+
+.hbtn{
+  border:1.5px solid var(--grey-light);
+  border-radius:7px;
+  background:var(--off-white);
+  color:var(--text2);
+  font-family:'Inter',sans-serif;
+  font-size:11px;font-weight:600;
+  padding:8px 2px;
+  cursor:pointer;
+  transition:all .12s;
+  text-align:center;
+}
+.hbtn:hover:not(.used):not(.blocked){background:var(--blue-ghost);border-color:var(--blue-pale);color:var(--blue);}
+.hbtn.sel{background:var(--blue);border-color:var(--blue-dark);color:var(--white);}
+.hbtn.used,.hbtn.blocked{background:var(--grey-light);color:var(--grey);cursor:not-allowed;opacity:.55;}
+
+/* Summary bar */
+.add-summary{padding:10px 14px;border-radius:var(--radius-xs);font-size:12px;margin:10px 0;display:flex;align-items:center;gap:8px;}
+.add-summary.empty{background:var(--off-white);border:1px solid var(--grey-light);color:var(--text3);}
+.add-summary.partial{background:var(--warning-bg);border:1px solid rgba(217,119,6,.25);color:var(--warning);}
+.add-summary.ok{background:var(--success-bg);border:1px solid rgba(26,158,110,.25);color:var(--success);}
+
+/* Day checkboxes */
+.day-check-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;}
+.day-check-label{display:flex;align-items:center;gap:5px;cursor:pointer;padding:7px 11px;border-radius:20px;border:1.5px solid var(--grey-light);background:var(--off-white);font-size:11px;font-weight:700;color:var(--text3);transition:all .15s;user-select:none;}
+.day-check-label:has(input:checked){border-color:var(--blue);background:var(--blue-ghost);color:var(--blue);}
+.day-check-label input{display:none;}
+
+/* BUTTONS */
+.btn-primary{background:linear-gradient(135deg,var(--blue-mid),var(--blue-dark));color:var(--white);border:none;border-radius:var(--radius-xs);padding:10px 20px;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 3px 10px rgba(45,74,158,.25);}
+.btn-primary:hover{opacity:.92;transform:translateY(-1px);}
+.btn-secondary{background:var(--off-white);color:var(--text2);border:1.5px solid var(--grey-light);border-radius:var(--radius-xs);padding:9px 16px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;margin-left:6px;}
+.btn-secondary:hover{background:var(--grey-light);color:var(--text);}
+.btn-danger{background:var(--danger-bg);color:var(--danger);border:1px solid rgba(192,57,43,.2);border-radius:var(--radius-xs);padding:8px 14px;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;}
+.btn-danger:hover{background:rgba(192,57,43,.12);}
+
+/* SCHEDULE LIST */
+.sched-list{display:flex;flex-direction:column;gap:7px;}
+.sched-item{display:flex;align-items:flex-start;gap:10px;background:var(--off-white);border-radius:var(--radius-xs);padding:12px 14px;border:1px solid var(--grey-light);transition:border-color .15s;}
+.sched-item:hover{border-color:var(--grey-mid);}
+.sched-item.cancelled{opacity:.6;border-style:dashed;}
+.sched-item-id{font-size:9px;color:var(--text3);font-family:monospace;letter-spacing:.3px;padding-top:2px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px;}
+.sched-item-main{flex:1;min-width:0;}
+.sched-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;}
+.sched-date{font-size:12px;font-weight:700;color:var(--text);}
+.sched-arrow{color:var(--grey);font-size:12px;}
+.sched-time{font-size:13px;font-weight:700;color:var(--blue);}
+.sched-dur{font-size:11px;color:var(--text3);background:var(--grey-light);padding:1px 6px;border-radius:4px;}
+.sched-meta-row{display:flex;gap:5px;flex-wrap:wrap;}
+.sched-actions{display:flex;gap:4px;flex-shrink:0;}
+.btn-edit-sm,.btn-cancel-sm{background:var(--white);border:1px solid var(--grey-light);border-radius:5px;padding:5px 9px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer;transition:all .15s;}
+.btn-edit-sm:hover{border-color:var(--blue);color:var(--blue);}
+.btn-cancel-sm:hover{border-color:var(--danger);color:var(--danger);}
+.btn-edit-sm.locked,.btn-cancel-sm.locked{opacity:.4;cursor:not-allowed;}
+
+/* Tags */
+.loc-tag{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;background:#fff7e6;color:#92400e;border:1px solid #fed7aa;font-size:10px;font-weight:600;}
+.notes-tag{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;background:var(--off-white);color:var(--text3);border:1px solid var(--grey-light);font-size:10px;}
+.cancel-reason{display:inline-flex;align-items:center;padding:2px 7px;border-radius:4px;background:var(--danger-bg);color:var(--danger);font-size:10px;}
+
+/* Estado badges */
+.estado-badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;}
+.estado-active{background:var(--success-bg);color:var(--success);border:1px solid rgba(26,158,110,.2);}
+.estado-cancelled{background:var(--danger-bg);color:var(--danger);border:1px solid rgba(192,57,43,.2);}
+
+/* CALENDAR */
+.month-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;}
+.month-title{font-size:16px;font-weight:800;color:var(--text);}
+.btn-nav{background:var(--off-white);border:1px solid var(--grey-light);border-radius:7px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text2);font-size:14px;transition:all .15s;}
+.btn-nav:hover{background:var(--blue-ghost);border-color:var(--blue-pale);color:var(--blue);}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.cal-day-header{text-align:center;font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding:5px 0;}
+.cal-day{background:var(--off-white);border-radius:6px;min-height:68px;padding:5px;cursor:pointer;transition:all .15s;border:1px solid transparent;}
+.cal-day:hover{background:var(--blue-ghost);border-color:var(--blue-pale);}
+.cal-day.today{border-color:var(--blue);}
+.cal-day.other{opacity:.2;cursor:default;}
+.cal-day.has-s{border-color:rgba(45,74,158,.28);background:var(--blue-ghost);}
+.cal-day-num{font-size:11px;font-weight:600;color:var(--text);margin-bottom:3px;}
+.cal-day.today .cal-day-num{background:var(--blue);color:var(--white);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;}
+.cal-shift-row{font-size:9px;font-weight:700;color:var(--blue);background:rgba(45,74,158,.1);border-radius:3px;padding:1px 4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cal-more{font-size:9px;color:var(--text3);margin-top:2px;}
+
+/* WEEK SUMMARY */
+.week-band{display:grid;grid-template-columns:58px repeat(7,1fr);gap:3px;align-items:center;margin-bottom:3px;}
+.week-band.hdr{margin-bottom:2px;}
+.band-lbl{font-size:9px;font-weight:700;color:var(--text3);text-align:right;padding-right:7px;text-transform:uppercase;letter-spacing:.4px;}
+.band-dh{text-align:center;font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;}
+.band-cell{height:42px;border-radius:6px;background:var(--off-white);border:1.5px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;}
+.band-cell.has-data{background:var(--blue-ghost);border-color:var(--blue-pale);}
+.band-cell.phantom{background:transparent;border:none;}
+.band-cell.adm-cell{flex-direction:column;gap:1px;height:auto;min-height:44px;padding:3px 4px;}
+.bc-total{font-size:12px;font-weight:800;color:var(--blue);}
+.bc-pend{font-size:9px;font-weight:700;color:var(--warning);background:var(--warning-bg);padding:1px 4px;border-radius:3px;}
+.bc-desp{font-size:9px;font-weight:700;color:var(--success);background:var(--success-bg);padding:1px 4px;border-radius:3px;}
+.cal-plate-row{font-size:9px;font-weight:700;color:var(--blue);background:var(--blue-ghost);border-radius:3px;padding:1px 4px;margin-top:2px;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.cal-plate-row.cal-plate-desp{color:var(--success);background:var(--success-bg);}
+.cal-count{font-size:9px;color:var(--text3);margin-top:2px;font-weight:600;}
+.cal-day.clickable:hover{background:var(--blue-ghost);cursor:pointer;}
+.dt-row{padding:8px 0;border-bottom:1px solid var(--grey-light);display:flex;flex-direction:column;gap:3px;}
+.dt-row:last-child{border-bottom:none;}
+.dt-date{font-size:12px;font-weight:700;color:var(--text);}
+.dt-time{font-size:12px;color:var(--blue);font-weight:600;}
+.dt-estado{display:flex;align-items:center;gap:8px;margin-top:2px;}
+.dt-cancelled .dt-time{color:var(--text3);text-decoration:line-through;}
+.dt-asignado .dt-date{color:var(--success);}
+.btn-desp-sm{background:none;border:1px solid #dc2626;color:#dc2626;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;}
+.btn-desp-sm:hover{background:#dc2626;color:white;}
+.driver-row:hover td{background:var(--blue-ghost);}
+.bc-n{font-size:12px;font-weight:800;color:var(--blue);}
+.bc-s{font-size:9px;color:var(--text3);}
+
+/* RAW SHEET TABLE */
+.raw-table-wrap{overflow-x:auto;margin-top:10px;}
+.raw-table{width:100%;border-collapse:collapse;font-size:11px;}
+.raw-table th{text-align:left;padding:8px 10px;font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--grey-light);white-space:nowrap;background:var(--off-white);}
+.raw-table td{padding:8px 10px;border-bottom:1px solid var(--grey-light);color:var(--text2);vertical-align:middle;white-space:nowrap;}
+.raw-table tr:last-child td{border-bottom:none;}
+.raw-table tr:hover td{background:var(--off-white);}
+.mono{font-family:monospace;font-size:10px;letter-spacing:.3px;}
+.small{font-size:9px;}
+.plate-badge{background:var(--blue-ghost);border:1px solid var(--blue-pale);border-radius:4px;padding:2px 6px;font-size:10px;font-weight:700;color:var(--blue);font-family:monospace;letter-spacing:1px;}
+.td-name{font-weight:600;color:var(--text);}
+
+/* SYNC */
+.sync-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+.sync-badge.ok{background:var(--success-bg);color:var(--success);border:1px solid rgba(26,158,110,.2);}
+.sync-badge.pending{background:var(--warning-bg);color:var(--warning);border:1px solid rgba(217,119,6,.2);}
+
+/* 7-DAY PREVIEW */
+.week7{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;}
+.w7-col{text-align:center;}
+.w7-col.today .w7-num{color:var(--blue);font-weight:800;}
+.w7-dow{font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:3px;}
+.w7-num{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:4px;}
+.w7-cell{height:44px;border-radius:6px;background:var(--off-white);border:1.5px solid var(--grey-light);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:18px;color:var(--grey-mid);}
+.w7-cell.filled{background:var(--blue-ghost);border-color:var(--blue-pale);}
+.w7-cell.filled strong{font-size:14px;font-weight:800;color:var(--blue);display:block;}
+.w7-cell.filled small{font-size:9px;color:var(--text3);}
+.w7-loc{font-size:8px;color:var(--text3);margin-top:2px;overflow:hidden;white-space:nowrap;max-width:100%;text-overflow:ellipsis;}
+
+/* PROFILE STATS */
+.stat-list{display:flex;flex-direction:column;gap:10px;}
+.stat-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;}
+.stat-row span{color:var(--text3);}
+
+/* EMPTY */
+.empty-state{color:var(--text3);font-size:13px;text-align:center;padding:36px;}
+.empty-td{text-align:center;color:var(--text3);padding:28px!important;}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(22,38,96,.55);z-index:1000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--white);border-radius:var(--radius);padding:24px;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.25);animation:modalIn .2s ease;}
+.modal.sm{max-width:380px;}
+@keyframes modalIn{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-title{font-size:16px;font-weight:800;color:var(--text);margin-bottom:14px;}
+
+/* LOADING */
+#loadingOverlay{position:fixed;inset:0;background:rgba(255,255,255,.82);z-index:5000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-size:13px;color:var(--text2);font-weight:500;backdrop-filter:blur(2px);}
+#loadingOverlay.show{display:flex;}
+.spinner-lg{width:24px;height:24px;border:2px solid var(--grey-light);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;}
+
+/* TOAST */
+.toast-wrap{position:fixed;bottom:18px;right:18px;z-index:10000;display:flex;flex-direction:column;gap:6px;}
+.toast{background:var(--white);border:1px solid var(--grey-light);border-radius:var(--radius-xs);padding:11px 14px;font-size:13px;color:var(--text);box-shadow:0 8px 28px rgba(0,0,0,.13);animation:toastIn .3s ease;max-width:280px;display:flex;align-items:center;gap:8px;}
+.toast.success{border-left:3px solid var(--success);}
+.toast.error{border-left:3px solid var(--danger);}
+.toast.warning{border-left:3px solid var(--warning);}
+@keyframes toastIn{from{transform:translateX(70px);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* Diagnostic status */
+.diag-status{padding:10px 13px;border-radius:var(--radius-xs);font-size:11px;line-height:1.7;margin-top:8px;white-space:pre-wrap;}
+.diag-loading{background:var(--blue-ghost);border:1px solid var(--blue-pale);color:var(--blue);}
+.diag-ok     {background:var(--success-bg);border:1px solid rgba(26,158,110,.25);color:var(--success);}
+.diag-error  {background:var(--danger-bg); border:1px solid rgba(192,57,43,.25); color:var(--danger);}
+/* Overnight tag */
+.overnight-tag{display:inline-flex;align-items:center;padding:1px 5px;border-radius:3px;background:#f5f3ff;color:#6d28d9;border:1px solid #c4b5fd;font-size:9px;font-weight:700;margin-left:3px;}
+/* Next day +1 button style */
+.hbtn.next-day{background:#fef3c7;border-color:#fde68a;color:#92400e;}
+.hbtn.next-day:hover{background:#fde68a;border-color:#f59e0b;}
+.hbtn.next-day.sel{background:#f59e0b;border-color:#d97706;color:var(--white);}
+.nd-tag{display:inline-block;background:#f59e0b;color:var(--white);border-radius:3px;padding:0 3px;font-size:8px;font-weight:700;margin-left:2px;vertical-align:middle;}
+/* Consolidado admin */
+.consol-day{margin-bottom:18px;border:1px solid var(--grey-light);border-radius:var(--radius);overflow:hidden;}
+.consol-day-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--off-white);border-bottom:1px solid var(--grey-light);}
+.consol-date{font-size:13px;font-weight:700;color:var(--text);text-transform:capitalize;}
+.consol-total{font-size:11px;color:var(--text3);font-weight:600;}
+.consol-blocks{display:flex;flex-wrap:wrap;gap:8px;padding:10px 12px;}
+.consol-block{display:flex;align-items:center;gap:10px;background:var(--white);border:1px solid var(--grey-light);border-radius:var(--radius-xs);padding:8px 12px;min-width:200px;flex:1;}
+.consol-block-time{text-align:center;font-size:11px;font-weight:700;color:var(--blue);line-height:1.4;flex-shrink:0;min-width:42px;}
+.consol-block-time span{color:var(--text3);font-size:10px;}
+.consol-driver-name{font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;}
+.consol-block-meta{display:flex;gap:4px;flex-wrap:wrap;align-items:center;}
+.consol-block-action{margin-left:auto;flex-shrink:0;}
+.consol-block.desp{background:var(--success-bg);border-color:rgba(26,158,110,.25);opacity:.85;}
+.consol-block.desp .consol-block-time{color:var(--success);}
+.consol-stats{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.consol-badge-pend{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--warning-bg);color:var(--warning);border:1px solid rgba(217,119,6,.2);}
+.consol-badge-desp{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--success-bg);color:var(--success);border:1px solid rgba(26,158,110,.2);}
+.consol-total-h{font-size:11px;color:var(--text3);font-weight:600;}
+.desp-tag{display:inline-block;background:var(--success-bg);color:var(--success);border:1px solid rgba(26,158,110,.25);border-radius:4px;font-size:9px;font-weight:700;padding:1px 6px;margin-left:6px;text-transform:uppercase;letter-spacing:.5px;}
+.desp-lock{display:inline-block;background:var(--grey-light);color:var(--text3);border-radius:var(--radius-xs);padding:5px 10px;font-size:11px;font-weight:600;cursor:not-allowed;}
+.btn-desp{background:linear-gradient(135deg,var(--blue-mid),var(--blue-dark));color:var(--white);border:none;border-radius:var(--radius-xs);padding:7px 14px;font-family:'Inter',sans-serif;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 2px 8px rgba(45,74,158,.25);}
+.btn-desp:hover{opacity:.88;transform:translateY(-1px);}
+.plate-badge.plate-desp{background:var(--success-bg);border-color:rgba(26,158,110,.3);color:var(--success);}
+.sched-item.asignado{border-color:rgba(26,158,110,.3);background:var(--success-bg);}
+.estado-asignado{background:var(--success-bg);color:var(--success);border:1px solid rgba(26,158,110,.2);}
+.consol-date{font-size:13px;font-weight:700;color:var(--text);text-transform:capitalize;}
+
+::-webkit-scrollbar{width:5px;}::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--grey-light);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--grey-mid);}
+
+@media(max-width:768px){
+  .app-layout{grid-template-columns:1fr;}
+  .sidebar{position:fixed;bottom:0;left:0;right:0;height:auto;flex-direction:row;z-index:100;}
+  .sidebar-nav,.sb-driver{display:none;}
+  .main-content{padding:12px 10px 68px;}
+  .grid-3,.grid-2{grid-template-columns:1fr;}
+  .form-row{grid-template-columns:1fr;}
+  .hour-grid{grid-template-columns:repeat(4,1fr);}
+}
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splashScreen">
+  <img src="/assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">   <div class="splash-txt">Cargando sistema...</div>
+  <div class="splash-spin"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="ld ld1"></div><div class="ld ld2"></div>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo-wrap">
+        <img src="/assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">       
+      </div>
+      <div class="login-title">Bienvenido</div>
+      <div class="login-sub">Ingresa tu placa y número de documento</div>
+      <div class="field-group">
+        <label class="field-label">Placa del Vehículo</label>
+        <input type="text" class="field-input" id="loginPlate" placeholder="Ej: ABC123" autocomplete="off" oninput="this.value=this.value.toUpperCase()">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Número de Documento (PIN)</label>
+        <input type="password" class="field-input" id="loginPin" placeholder="Tu número de cédula" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <button class="btn-login" id="loginBtn" onclick="doLogin()">Ingresar →</button>
+      <div class="login-loading" id="loginLoading"><div class="spinner-s"></div><span>Verificando...</span></div>
+      <div class="login-error" id="loginError"></div>
+      <div class="admin-link">¿Administrador? <a onclick="openAdminLogin()">Acceso Admin</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appScreen">
+<div class="app-layout">
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <img src="/assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">     
+    <div class="sb-brand"><div class="sb-brand-main">Disponibilidad Operacion</div><div class="sb-brand-sub">Special CAR</div></div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-sec">Principal</div>
+    <div class="nav-item active" onclick="showPage('dashboard',this)"><span class="nav-icon">📊</span> Dashboard</div>
+    <div id="navMisTurnos" class="nav-item" onclick="showPage('schedule',this)"><span class="nav-icon">📋</span> Mis Turnos</div>
+    <div id="navAgregarTurno" class="nav-item" onclick="showPage('add-schedule',this)"><span class="nav-icon">➕</span> Agregar Turno</div>
+    <div id="navVistaMensual" class="nav-item" onclick="showPage('monthly-view',this)"><span class="nav-icon">🗓</span> Vista Mensual</div>
+    <div class="nav-sec">Cuenta</div>
+    <div id="navMiPerfil" class="nav-item" onclick="showPage('profile',this)"><span class="nav-icon">👤</span> Mi Perfil</div>
+    <div id="adminNav" style="display:none">
+      <div class="nav-sec">Administración</div>
+      <div class="nav-item" onclick="showPage('admin',this)"><span class="nav-icon">⚙</span> Panel Admin</div>
+    </div>
+  </nav>
+  <div class="sb-driver">
+    <div class="drv-avatar" id="sidebarInitial">?</div>
+    <div class="drv-name"  id="sidebarName">—</div>
+    <div class="drv-plate" id="sidebarPlate">—</div>
+  </div>
+  <button class="btn-logout" onclick="doLogout()">↩ Cerrar sesión</button>
+</aside>
+
+<!-- MAIN -->
+<main class="main-content">
+
+<!-- DASHBOARD -->
+<div id="page-dashboard" class="page active">
+  <div class="page-header">
+    <div class="page-title">Hola, <span id="dashName">Conductor</span> 👋</div>
+    <div class="page-sub">Resumen de tus turnos del mes en curso.</div>
+  </div>
+  <div class="grid-3" style="margin-bottom:14px">
+    <div class="stat-card blue"><div class="stat-label">Turnos activos mes</div><div class="stat-value" id="statMonth">0</div><div class="stat-sub">programados</div></div>
+    <div class="stat-card navy"><div class="stat-label">Próximo turno</div><div class="stat-value" id="statNext" style="font-size:20px;margin-top:5px">—</div><div class="stat-sub" id="statNextDate">sin programar</div></div>
+    <div class="stat-card green"><div class="stat-label">Horas este mes</div><div class="stat-value" id="statHours">0</div><div class="stat-sub">horas programadas</div></div>
+  </div>
+  <div class="card" style="margin-bottom:13px">
+    <div class="card-title">📅 Próximos 7 días</div>
+    <div id="dashWeek"></div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="justify-content:space-between">
+      <span>🔄 Google</span>
+      <span class="sync-badge pending" id="dashSyncBadge">Pendiente</span>
+    </div>
+    <div style="font-size:11px;color:var(--text3)" id="dashSyncTime">Sin sincronizar</div>
+    <button class="btn-primary" style="margin-top:11px" onclick="syncNow()">↻ Recargar desde Base de Datos</button>
+  </div>
+</div>
+
+<!-- MY SHIFTS -->
+<div id="page-schedule" class="page">
+  <div class="page-header">
+    <div class="page-title">Mis Turnos</div>
+    <div class="page-sub">Turnos con menos de 12 horas quedan bloqueados para edición o cancelación.</div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchSchedTab('upcoming',this)">Próximos</button>
+    <button class="tab-btn" onclick="switchSchedTab('past',this)">Pasados / Cancelados</button>
+  </div>
+  <div class="card">
+    <div class="sched-list" id="schedList"><div class="empty-state">Cargando...</div></div>
+  </div>
+</div>
+
+<!-- ADD SCHEDULE -->
+<div id="page-add-schedule" class="page">
+  <div class="page-header">
+    <div class="page-title">Agregar Turno</div>
+    <div class="page-sub">Selecciona la fecha, hora de inicio, hora de fin y localidad de salida.</div>
+  </div>
+  <div class="card">
+    <div class="card-title">📆 Tipo de programación</div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchAddTab('day',this)">Por Día</button>
+      <button class="tab-btn" onclick="switchAddTab('week',this)">Por Semana</button>
+      <button class="tab-btn" onclick="switchAddTab('month',this)">Por Mes</button>
+    </div>
+
+    <!-- DAY -->
+    <div id="addTab-day">
+      <div class="form-row">
+        <div class="form-field"><label>Fecha</label><input type="date" id="addDate"></div>
+        <div class="form-field"><label>📍 Localidad de salida</label><select class="locality-sel" id="addLocSelect"></select></div>
+      </div>
+
+      <div class="picker-section">
+        <span class="picker-label">🕐 Hora de Inicio</span>
+        <div class="picker-hint">Selecciona a qué hora empieza tu turno. Las horas en gris ya están ocupadas.</div>
+        <div class="hour-grid" id="startHourPicker"></div>
+      </div>
+
+      <div class="picker-section" id="endPickerSection" style="display:none">
+        <span class="picker-label">🕔 Hora de Fin</span>
+        <div class="picker-hint">Selecciona a qué hora termina tu turno.</div>
+        <div class="hour-grid" id="endHourPicker"></div>
+      </div>
+
+      <div class="add-summary empty" id="addSummary">Selecciona la hora de inicio del turno</div>
+
+      <div class="form-row single" style="margin-top:10px">
+        <div class="form-field"><label>Notas (opcional)</label><input type="text" id="addNotes" placeholder="Ruta, observaciones..."></div>
+      </div>
+      <button class="btn-primary" onclick="saveNewTurno()">Guardar Turno</button>
+    </div>
+
+    <!-- WEEK -->
+    <div id="addTab-week" style="display:none">
+      <div class="form-row">
+        <div class="form-field"><label>Semana (fecha de inicio)</label><input type="date" id="weekStartDate"></div>
+        <div class="form-field"><label>📍 Localidad de salida</label><select class="locality-sel" id="weekLocSelect"></select></div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label class="picker-label">Días activos</label>
+        <div class="day-check-row">
+          <label class="day-check-label"><input type="checkbox" class="week-day-cb" value="1"> LUN</label>
+          <label class="day-check-label"><input type="checkbox" class="week-day-cb" value="2"> MAR</label>
+          <label class="day-check-label"><input type="checkbox" class="week-day-cb" value="3"> MIÉ</label>
+          <label class="day-check-label"><input type="checkbox" class="week-day-cb" value="4"> JUE</label>
+          <label class="day-check-label"><input type="checkbox" class="week-day-cb" value="5"> VIE</label>
+          <label class="day-check-label"><input type="checkbox" class="week-day-cb" value="6"> SÁB</label>
+          <label class="day-check-label"><input type="checkbox" class="week-day-cb" value="0"> DOM</label>
+        </div>
+      </div>
+      <div class="picker-section">
+        <span class="picker-label">🕐 Hora de Inicio</span>
+        <div class="hour-grid" id="weekStartPicker"></div>
+      </div>
+      <div class="picker-section" id="weekEndSection" style="display:none">
+        <span class="picker-label">🕔 Hora de Fin</span>
+        <div class="hour-grid" id="weekEndPicker"></div>
+      </div>
+      <div class="add-summary empty" id="weekSummary">Selecciona hora de inicio</div>
+      <button class="btn-primary" style="margin-top:10px" onclick="saveWeekTurnos()">Guardar Semana</button>
+    </div>
+
+    <!-- MONTH -->
+    <div id="addTab-month" style="display:none">
+      <div class="form-row">
+        <div class="form-field"><label>Mes</label><input type="month" id="monthMonthDate"></div>
+        <div class="form-field"><label>📍 Localidad de salida</label><select class="locality-sel" id="monthLocSelect"></select></div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label class="picker-label">Días laborales del mes</label>
+        <div class="day-check-row">
+          <label class="day-check-label"><input type="checkbox" class="month-day-cb" value="1"> LUN</label>
+          <label class="day-check-label"><input type="checkbox" class="month-day-cb" value="2"> MAR</label>
+          <label class="day-check-label"><input type="checkbox" class="month-day-cb" value="3"> MIÉ</label>
+          <label class="day-check-label"><input type="checkbox" class="month-day-cb" value="4"> JUE</label>
+          <label class="day-check-label"><input type="checkbox" class="month-day-cb" value="5"> VIE</label>
+          <label class="day-check-label"><input type="checkbox" class="month-day-cb" value="6"> SÁB</label>
+          <label class="day-check-label"><input type="checkbox" class="month-day-cb" value="0"> DOM</label>
+        </div>
+      </div>
+      <div class="picker-section">
+        <span class="picker-label">🕐 Hora de Inicio</span>
+        <div class="hour-grid" id="monthStartPicker"></div>
+      </div>
+      <div class="picker-section" id="monthEndSection" style="display:none">
+        <span class="picker-label">🕔 Hora de Fin</span>
+        <div class="hour-grid" id="monthEndPicker"></div>
+      </div>
+      <div class="add-summary empty" id="monthSummary">Selecciona hora de inicio</div>
+      <button class="btn-primary" style="margin-top:10px" onclick="saveMonthTurnos()">Guardar Mes Completo</button>
+    </div>
+  </div>
+</div>
+
+<!-- MONTHLY VIEW -->
+<div id="page-monthly-view" class="page">
+  <div class="page-header">
+    <div class="page-title">Vista Mensual</div>
+    <div class="page-sub">Turnos activos organizados por semana.</div>
+  </div>
+  <div class="card">
+    <div class="month-nav">
+      <button class="btn-nav" onclick="changeMonth(-1)">‹</button>
+      <div class="month-title" id="monthTitle">—</div>
+      <button class="btn-nav" onclick="changeMonth(1)">›</button>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-day-header">Lun</div><div class="cal-day-header">Mar</div>
+      <div class="cal-day-header">Mié</div><div class="cal-day-header">Jue</div>
+      <div class="cal-day-header">Vie</div><div class="cal-day-header">Sáb</div>
+      <div class="cal-day-header">Dom</div>
+    </div>
+    <div class="cal-grid" id="calGrid" style="margin-top:3px;gap:3px"></div>
+  </div>
+  <div class="card" style="margin-top:13px">
+    <div class="card-title">📆 Resumen por semana — <span id="weekSumTitle"></span></div>
+    <div id="weekSumGrid"></div>
+    <div style="margin-top:10px;display:flex;gap:16px;font-size:11px;color:var(--text3)">
+      <span><strong style="color:var(--blue)">Xh</strong> = horas ese día</span>
+      <span><strong>Xt</strong> = número de turnos</span>
+    </div>
+  </div>
+</div>
+
+<!-- PROFILE -->
+<div id="page-profile" class="page">
+  <div class="page-header">
+    <div class="page-title">Mi Perfil</div>
+    <div class="page-sub">Los cambios se guardan directamente en la Base de Datos.</div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">👤 Datos Personales</div>
+      <div class="form-row single"><div class="form-field"><label>Nombre Completo</label><input type="text" id="pName" placeholder="Tu nombre"></div></div>
+      <div class="form-row">
+        <div class="form-field"><label>Teléfono</label><input type="tel" id="pPhone" placeholder="3001234567"></div>
+        <div class="form-field"><label>Documento (PIN)</label><input type="text" id="pDoc" readonly style="opacity:.55;cursor:not-allowed"></div>
+      </div>
+      <div class="form-row single">
+        <div class="form-field"><label>📍 Localidad habitual de salida</label><select class="locality-sel" id="pLocality"></select></div>
+      </div>
+      <div class="sep"></div>
+      <div class="card-title">🚗 Vehículo</div>
+      <div class="form-row">
+        <div class="form-field"><label>Placa</label><input type="text" id="pPlate" readonly style="opacity:.55;cursor:not-allowed"></div>
+        <div class="form-field"><label>Tipo</label>
+          <select id="pVType">
+            <option value="">Seleccionar...</option>
+            <option value="bus">Bus</option><option value="buselec">Bus Eléctrico</option>
+            <option value="micro">Microbús</option><option value="van">Van</option>
+            <option value="camion">Camión</option><option value="Automovil">Automóvil</option><option value="otro">Otro</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row single"><div class="form-field"><label>Número Interno</label><input type="text" id="pVNum" placeholder="Ej: 1042"></div></div>
+      <button class="btn-primary" onclick="saveProfile()">Guardar en Base de Datos</button>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 Estadísticas</div>
+      <div id="profileStats">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div id="page-admin" class="page">
+  <div class="page-header">
+    <div class="page-title">Panel Admin</div>
+    <div class="page-sub">Vista de conductores y registro de turnos desde la Base de Datos.</div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchAdminTab('conductores',this)">Conductores</button>
+    <button class="tab-btn" onclick="switchAdminTab('consolidado',this)">Consolidado por Dia</button>
+  </div>
+
+  <div id="adminTabConductores">
+    <div class="card" style="margin-bottom:13px">
+      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+        <input type="text" style="background:var(--off-white);border:1.5px solid var(--grey-light);border-radius:var(--radius-xs);padding:9px 11px;font-family:'Inter',sans-serif;font-size:13px;color:var(--text);outline:none;flex:1;min-width:180px;max-width:280px" id="searchDriver" placeholder="Buscar nombre, placa, localidad..." oninput="filterDrivers()">
+        <button class="btn-primary" onclick="loadAdminPage()">Recargar</button>
+        <button class="btn-secondary" onclick="exportCSV()">Exportar CSV</button>
+      </div>
+    </div>
+    <div class="card">
+      <table class="raw-table">
+        <thead><tr><th>Conductor</th><th>Documento</th><th>Placa</th><th>Localidad</th><th>Vehiculo</th><th>Actividad mes</th></tr></thead>
+        <tbody id="adminTableBody"><tr><td colspan="6" class="empty-td">Haz clic en "Recargar".</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CONSOLIDADO POR DIA -->
+  <div id="adminTabConsolidado" style="display:none">
+    <div class="card" style="margin-bottom:13px">
+      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:6px">
+          <label style="font-size:12px;color:var(--text3);font-weight:600">Filtrar dia:</label>
+          <input type="date" id="filterConsolidadoDate" style="background:var(--off-white);border:1.5px solid var(--grey-light);border-radius:var(--radius-xs);padding:7px 10px;font-family:'Inter',sans-serif;font-size:13px;color:var(--text);outline:none;" oninput="filterConsolidado()">
+          <button class="btn-secondary" onclick="clearConsolidadoFilter()" style="padding:7px 12px;font-size:12px">Limpiar</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <label style="font-size:12px;color:var(--text3);font-weight:600">Conductor:</label>
+          <input type="text" id="filterConsolidadoConductor" placeholder="Nombre o placa..." style="background:var(--off-white);border:1.5px solid var(--grey-light);border-radius:var(--radius-xs);padding:7px 10px;font-family:'Inter',sans-serif;font-size:13px;color:var(--text);outline:none;max-width:200px" oninput="filterConsolidado()">
+        </div>
+        <button class="btn-primary" onclick="loadAdminPage().then(()=>showConsolidado())" style="font-size:12px">Recargar</button>
+      </div>
+    </div>
+    <div class="card" id="consolidadoCard">
+      <div id="consolidadoWrap"><div class="empty-state">Carga los datos desde la pestana Conductores primero.</div></div>
+    </div>
+  </div>
+
+  <div id="adminTabSheet" style="display:none">
+    <div class="card" id="sheetViewCard">
+      <div id="sheetViewWrap"></div>
+    </div>
+  </div>
+</div>
+
+</main>
+</div>
+</div>
+
+<!-- DRIVER TURNOS MODAL -->
+<div class="modal-overlay" id="driverTurnosModal">
+  <div class="modal" style="max-width:580px;width:95%">
+    <div class="modal-title" id="driverTurnosTitle">Turnos del conductor</div>
+    <div id="driverTurnosList" style="max-height:420px;overflow-y:auto;margin-top:12px"></div>
+    <div style="margin-top:16px;text-align:right">
+      <button class="btn-secondary" onclick="closeModal('driverTurnosModal')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-title">✏️ Editar Turno</div>
+    <div class="form-row">
+      <div class="form-field"><label>Fecha</label><input type="date" id="editDate" onchange="renderEditPicker()"></div>
+      <div class="form-field"><label>📍 Localidad</label><select class="locality-sel" id="editLocSelect"></select></div>
+    </div>
+    <div class="picker-section">
+      <span class="picker-label">🕐 Hora de Inicio</span>
+      <div class="hour-grid" id="editStartPicker"></div>
+    </div>
+    <div class="picker-section" id="editEndPickerSection" style="display:none">
+      <span class="picker-label">🕔 Hora de Fin</span>
+      <div class="hour-grid" id="editEndPicker"></div>
+    </div>
+    <div class="add-summary empty" id="editSummary">Selecciona el horario</div>
+    <div class="form-row single" style="margin-top:10px">
+      <div class="form-field"><label>Notas</label><input type="text" id="editNotes2" placeholder="Observaciones..."></div>
+    </div>
+    <div style="display:flex;gap:7px;margin-top:13px">
+      <button class="btn-primary" onclick="saveEditTurno()">Guardar</button>
+      <button class="btn-secondary" onclick="closeModal('editModal')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- CANCEL MODAL -->
+<div class="modal-overlay" id="cancelModal">
+  <div class="modal sm">
+    <div class="modal-title">✕ Cancelar Turno</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:14px">
+      Turno: <strong id="cancelInfo"></strong>
+    </div>
+    <div class="form-row single">
+      <div class="form-field">
+        <label>Motivo de cancelación (opcional)</label>
+        <input type="text" id="cancelReason" placeholder="Enfermedad, emergencia...">
+      </div>
+    </div>
+    <div style="background:var(--warning-bg);border:1px solid rgba(217,119,6,.2);border-radius:var(--radius-xs);padding:10px 13px;font-size:12px;color:var(--warning);margin-bottom:14px">
+      ⚠️ Esta acción quedará registrada en la Base de Datos con la fecha y hora de cancelación.
+    </div>
+    <div style="display:flex;gap:7px">
+      <button class="btn-danger" onclick="confirmCancel()" style="flex:1;padding:10px">Confirmar Cancelación</button>
+      <button class="btn-secondary" onclick="closeModal('cancelModal')">Volver</button>
+    </div>
+  </div>
+</div>
+
+<div id="loadingOverlay">
+  <div class="spinner-lg"></div>
+  <span id="loadingText">Cargando...</span>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script>
+var SHEETS_CONFIG={SCRIPT_URL:"https://script.google.com/macros/s/AKfycbzFWSwUDJUOR_y2B8qrQyrGZ6xleQ3zHmE3QJhV1ltvUtANXIwqAgJtiaWpxSJGLW0/exec",ADMIN_PIN:"admin123"};
+</script>
+<script>
+// Special CAR -- FleetSync | app.js v6.1
+
+// Leer configuración desde SHEETS_CONFIG (definido antes en el HTML)
+// Usando var para hoisting -- funciona aunque SHEETS_CONFIG se declare en otro script
+var SCRIPT_URL = (typeof SHEETS_CONFIG !== 'undefined' && SHEETS_CONFIG.SCRIPT_URL)
+  ? SHEETS_CONFIG.SCRIPT_URL : '';
+var ADMIN_PIN = (typeof SHEETS_CONFIG !== 'undefined' && SHEETS_CONFIG.ADMIN_PIN)
+  ? SHEETS_CONFIG.ADMIN_PIN : 'admin123';
+
+
+const LOCALIDADES = [
+  'Usaquén','Chapinero','Santa Fe','San Cristóbal','Usme',
+  'Tunjuelito','Bosa','Kennedy','Fontibón','Engativá',
+  'Suba','Barrios Unidos','Teusaquillo','Los Mártires',
+  'Antonio Nariño','Puente Aranda','La Candelaria',
+  'Rafael Uribe Uribe','Ciudad Bolívar','Sumapaz'
+];
+
+const HOURS = Array.from({length:24},(_,i)=>`${String(i).padStart(2,'0')}:00`);
+
+// -- State ------------------------------------------
+let currentDriver  = null;
+let allTurnos      = [];
+let driverCache    = [];
+let lastSync       = null;
+let viewMonth      = new Date(); viewMonth.setDate(1);
+
+let selStartHour   = null;
+let selEndHour     = null;
+let selOvernight   = false;   // turno que cruza medianoche
+let editRowIndex   = -1;
+let editStartH     = null;
+let editEndH       = null;
+let editOvernight  = false;
+
+// -- Date/Hour helpers (FIXED for "2026-03-23 7:00" format) ------------
+
+// Extrae la fecha "YYYY-MM-DD" de un valor como "2026-03-23 7:00"
+// parseDate: extrae "YYYY-MM-DD" de cualquier formato que venga del Sheet
+// Formatos posibles: "2026-03-23 07:00", "2026-03-23T07:00:00Z",
+// "Sat Mar 21 2026 07:00:00 GMT-0500 (Colombia Standard Time)"
+function parseDate(v) {
+  if (!v) return '';
+  var s = String(v).trim();
+  // Formato YYYY-MM-DD al inicio   mas comun
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  // Formato largo tipo "Sat Mar 21 2026 07:00:00 GMT-0500..."
+  // Extraer el ano y construir desde ahi
+  var mLong = s.match(/(\w+)\s+(\w+)\s+(\d+)\s+(\d{4})/);
+  if (mLong) {
+    var months = {Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',
+                  Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+    var mo = months[mLong[2]] || '01';
+    var dd = String(parseInt(mLong[3])).padStart(2,'0');
+    return mLong[4]+'-'+mo+'-'+dd;
+  }
+  // Fallback: intentar con Date nativo
+  try {
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      return d.getUTCFullYear()+'-'+
+        String(d.getUTCMonth()+1).padStart(2,'0')+'-'+
+        String(d.getUTCDate()).padStart(2,'0');
+    }
+  } catch(e) {}
+  return s.slice(0,10);
+}
+
+// parseHour: extrae "HH:MM" de cualquier formato del Sheet
+// Formatos posibles: "2026-03-23 07:00", "07:00",
+// "Sat Mar 21 2026 07:00:00 GMT-0500 (Colombia Standard Time)"
+function parseHour(v) {
+  if (!v) return '00:00';
+  var s = String(v).trim();
+  // Formato ISO con T: "2026-03-23T07:00:00.000Z"   hora en UTC
+  if (s.includes('T')) {
+    var tp = (s.split('T')[1]||'').replace('Z','').split('.')[0].split(':');
+    var hh = parseInt(tp[0]), mm = parseInt(tp[1]||0);
+    if (!isNaN(hh) && hh >= 0 && hh <= 23)
+      return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  }
+  // Formato "YYYY-MM-DD HH:MM"   tomar la parte despues del espacio
+  if (/^\d{4}-\d{2}-\d{2} /.test(s)) {
+    var tp = s.split(' ')[1].split(':');
+    var hh = parseInt(tp[0]), mm = parseInt(tp[1]||0);
+    if (!isNaN(hh) && hh >= 0 && hh <= 23)
+      return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  }
+  // Formato largo "Sat Mar 21 2026 07:00:00 GMT-0500..."
+  // Extraer la parte "07:00:00"
+  var mTime = s.match(/(\d{1,2}):(\d{2}):\d{2}\s+GMT/);
+  if (mTime) {
+    var hh = parseInt(mTime[1]), mm = parseInt(mTime[2]);
+    if (!isNaN(hh) && hh >= 0 && hh <= 23)
+      return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  }
+  // Solo "HH:MM"
+  var tp = s.split(':');
+  var hh = parseInt(tp[0]), mm = parseInt(tp[1]||0);
+  if (!isNaN(hh) && hh >= 0 && hh <= 23)
+    return String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');
+  return '00:00';
+}
+
+// Extrae la hora "HH:MM"   maneja todos los formatos posibles del Sheet
+// Formatos posibles: "2026-03-23 7:00", "07:00", "Mon Mar 23 2026 07:00:00 GMT..."
+// El Sheet puede devolver Date objects serializados o strings
+function parseHour(v) {
+  if (!v) return '00:00';
+  var s = String(v).trim();
+  // Si tiene formato ISO con T: "2026-03-23T07:00:00.000Z"
+  if (s.includes('T')) {
+    var tParts = s.split('T');
+    var timePart = (tParts[1]||'').split('.')[0].split('Z')[0];
+    var tp = timePart.split(':');
+    return String(parseInt(tp[0])||0).padStart(2,'0') + ':' + (tp[1]||'00').padStart(2,'0');
+  }
+  // Si tiene formato "YYYY-MM-DD HH:MM": tomar la parte de hora
+  var parts = s.split(' ');
+  var raw = parts.length >= 2 ? parts[parts.length-1] : parts[0];
+  // Si raw tiene mas de 5 chars (ej: "07:00:00") cortar
+  var timePart = raw.split(':').slice(0,2).join(':');
+  var tp = timePart.split(':');
+  var hh = parseInt(tp[0]);
+  var mm = parseInt(tp[1]||'0');
+  // Validacion: si hh > 23 probablemente es un ano (2026)   dato corrupto
+  if (isNaN(hh) || hh > 23 || hh < 0) return '00:00';
+  return String(hh).padStart(2,'0') + ':' + String(mm).padStart(2,'0');
+}
+
+// Normaliza cualquier hora suelta "7:00" -> "07:00"
+function normH(h) {
+  if (!h) return '00:00';
+  const [hh, mm='00'] = String(h).split(':');
+  return `${String(parseInt(hh)||0).padStart(2,'0')}:${mm.padStart(2,'0')}`;
+}
+
+// Formatea fecha+hora para guardar en Sheet: "2026-03-23 07:00"
+function fmtDT(dateStr, hourStr) {
+  const [hh, mm='00'] = String(hourStr||'00:00').split(':');
+  return `${dateStr} ${String(parseInt(hh)||0).padStart(2,'0')}:${mm.padStart(2,'0')}`;
+}
+
+// Calcula horas entre dos celdas. Soporta turnos nocturnos (fin < inicio)
+function calcHours(ini, fin) {
+  try {
+    var sh = parseInt(parseHour(ini));
+    var eh = parseInt(parseHour(fin));
+    var sd = parseDate(ini);
+    var ed = parseDate(fin);
+    // Turno de exactamente 24h: misma hora inicio=fin pero diferente dia
+    if (sh === eh && sd !== ed) return 24;
+    // Turno nocturno: fin < inicio (cruza medianoche)
+    if (eh < sh) return (24 - sh) + eh;
+    // Misma hora mismo dia = 0, pero si fin==inicio asumir 24h (turno completo)
+    if (sh === eh) return 24;
+    return eh - sh;
+  } catch(e) { return 0; }
+}
+
+// Dado un turno, devuelve la "fecha de inicio" siempre en formato limpio
+function turnoStartDate(r) { return parseDate(r.inicio); }
+
+// Para turnos nocturnos, el fin puede ser el día siguiente
+function turnoEndDate(r) {
+  const sd = parseDate(r.inicio);
+  const sh = parseInt(parseHour(r.inicio));
+  const eh = parseInt(parseHour(r.fin));
+  if (eh <= sh && sh > 0) {
+    // cruce de medianoche: sumar 1 día
+    const d = new Date(sd + 'T12:00:00');
+    d.setDate(d.getDate() + 1);
+    return ds(d);
+  }
+  return sd;
+}
+
+function ds(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function fmtDateHuman(v) {
+  try { return new Date(parseDate(v) + 'T12:00:00').toLocaleDateString('es-CO', {weekday:'long',year:'numeric',month:'long',day:'numeric'}); }
+  catch(e) { return v; }
+}
+function fmtDateShort(v) {
+  try { return new Date(parseDate(v) + 'T12:00:00').toLocaleDateString('es-CO', {day:'numeric',month:'short'}); }
+  catch(e) { return v; }
+}
+
+// canAdd: el turno solo debe estar en el futuro (>= ahora)
+// No requiere 12h   se puede agregar un turno para dentro de 1 hora
+function canAdd(dateStr, startHour) {
+  const h  = startHour ? normH(startHour) : null;
+  const dt = h ? new Date(dateStr + 'T' + h + ':00') : new Date(dateStr + 'T23:59:59');
+  return dt > new Date();
+}
+
+// canModify: para EDITAR o CANCELAR, requiere >= 12h de anticipacion
+function canModify(dateStr, startHour) {
+  const h  = startHour ? normH(startHour) : null;
+  const dt = h ? new Date(dateStr + 'T' + h + ':00') : new Date(dateStr + 'T23:59:59');
+  return (dt - new Date()) > 12 * 60 * 60 * 1000;
+}
+function canEditRow(r) {
+  // Solo se puede modificar si esta 'active' (no asignado) y con >= 12h
+  return r.estado === 'active' && canModify(turnoStartDate(r), parseHour(r.inicio));
+}
+
+function myActive() { return allTurnos.filter(r => String(r.doc)===String(currentDriver.doc) && String(r.plate).toUpperCase()===String(currentDriver.plate).toUpperCase() && (r.estado==='active'||r.estado==='asignado')); }
+function myAll()    { return allTurnos.filter(r => String(r.doc)===String(currentDriver.doc) && String(r.plate).toUpperCase()===String(currentDriver.plate).toUpperCase()); }
+
+// -- JSONP API -- con diagnóstico detallado ----------
+let _cbN = 0;
+
+function apiJsonp(params) {
+  return new Promise((resolve, reject) => {
+    if (!SCRIPT_URL || SCRIPT_URL.startsWith('PEGA')) {
+      return reject(new Error('[Config] Config incompleta: pega la URL del Apps Script en config.js'));
+    }
+    if (!SCRIPT_URL.includes('script.google.com')) {
+      return reject(new Error('[Aviso] La URL no parece ser de Google Apps Script. Debe contener "script.google.com"'));
+    }
+
+    const cbName = '__sc_' + (++_cbN);
+    const TIMEOUT_MS = 20000;
+
+    const tid = setTimeout(() => {
+      cleanup();
+      reject(new Error(
+        '[Timeout] Tiempo de espera agotado (20s).\n' +
+        'Posibles causas:\n' +
+        '- El script no está desplegado como Web App\n' +
+        '- El acceso no es "Cualquier persona"\n' +
+        '- La URL es de una implementación antigua -- crea una NUEVA implementación'
+      ));
+    }, TIMEOUT_MS);
+
+    function cleanup() {
+      delete window[cbName];
+      const el = document.getElementById(cbName);
+      if (el) el.remove();
+      clearTimeout(tid);
+    }
+
+    window[cbName] = function(data) {
+      cleanup();
+      if (!data) return reject(new Error('El script respondió vacío'));
+      if (!data.ok) return reject(new Error(data.error || 'El script respondió con error desconocido'));
+      resolve(data);
+    };
+
+    const allParams = { ...params, callback: cbName };
+    const qs = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(allParams).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])
+      )
+    ).toString();
+
+    const script = document.createElement('script');
+    script.id    = cbName;
+    script.src   = `${SCRIPT_URL}?${qs}`;
+
+    script.onerror = function() {
+      cleanup();
+      // Intenta dar una causa más específica
+      if (SCRIPT_URL.endsWith('/exec')) {
+        reject(new Error(
+          '[Error] El script rechazó la conexión.\n' +
+          'Pasos para resolver:\n' +
+          '1. Abre tu Apps Script\n' +
+          '2. Implementar -> Nueva implementación\n' +
+          '3. Tipo: Aplicación web\n' +
+          '4. Ejecutar como: Yo\n' +
+          '5. Acceso: Cualquier persona\n' +
+          '6. Copia la NUEVA URL y actualiza config.js'
+        ));
+      } else {
+        reject(new Error('[Error] URL inválida. La URL debe terminar en "/exec"'));
+      }
+    };
+
+    document.head.appendChild(script);
+  });
+}
+
+async function api(p) { return apiJsonp(p); }
+
+// -- Test de conexión manual (para diagnóstico) ---- 
+async function testConnection() {
+  const urlInput = document.getElementById('diagUrl');
+  const statusEl = document.getElementById('diagStatus');
+  const url = urlInput ? urlInput.value.trim() : SCRIPT_URL;
+
+  if (!url || url.startsWith('PEGA')) {
+    showDiagStatus('error', '[Aviso] Ingresa la URL del script primero.');
+    return;
+  }
+
+  showDiagStatus('loading', '[Sync] Probando conexión con el script...');
+
+  const cbName = '__sc_test_' + Date.now();
+  const timeout = setTimeout(() => {
+    delete window[cbName];
+    const s = document.getElementById(cbName); if(s) s.remove();
+    showDiagStatus('error', '[Timeout] Sin respuesta en 15 segundos. El script no está activo o la URL es incorrecta.');
+  }, 15000);
+
+  window[cbName] = function(data) {
+    clearTimeout(timeout);
+    delete window[cbName];
+    const s = document.getElementById(cbName); if(s) s.remove();
+    if (data && data.ok) {
+      showDiagStatus('ok', `[OK] Conexión exitosa. El script responde correctamente.\n\nAcción probada: "ping"\nRespuesta: ${JSON.stringify(data)}`);
+    } else {
+      showDiagStatus('error', `[Aviso] El script respondió pero con error: ${data?.error || JSON.stringify(data)}`);
+    }
+  };
+
+  const script = document.createElement('script');
+  script.id  = cbName;
+  script.src = `${url}?action=ping&callback=${cbName}`;
+  script.onerror = function() {
+    clearTimeout(timeout);
+    delete window[cbName];
+    script.remove();
+    showDiagStatus('error', '[Error] No se pudo cargar el script. Verifica:\n- La URL es correcta\n- El despliegue existe y es público\n- El script no tiene errores de sintaxis');
+  };
+  document.head.appendChild(script);
+}
+
+function showDiagStatus(type, msg) {
+  const el = document.getElementById('diagStatus');
+  if (!el) return;
+  el.style.display = 'block';
+  el.className = `diag-status diag-${type}`;
+  el.innerHTML = msg.replace(/\n/g, '<br>');
+}
+
+// -- Init ------------------------------------------ 
+window.addEventListener('load', () => {
+  if (!SCRIPT_URL || SCRIPT_URL.startsWith('PEGA')) { hideSplash(); showToast('[Aviso] Edita config.js con la URL del Apps Script.','warning'); return; }
+  setTimeout(hideSplash, 900);
+});
+function hideSplash() {
+  const s = document.getElementById('splashScreen'); s.classList.add('fade');
+  setTimeout(() => { s.style.display='none'; document.getElementById('loginScreen').style.display='block'; }, 380);
+}
+
+// -- Auth ------------------------------------------ 
+async function doLogin() {
+  const plate = document.getElementById('loginPlate').value.trim().toUpperCase();
+  const pin   = document.getElementById('loginPin').value.trim();
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginLoading').classList.add('show');
+  document.getElementById('loginBtn').disabled = true;
+  try {
+    const data = await api({action:'login', plate, doc:pin});
+    currentDriver = {...data.driver, rowIndex:data.rowIndex};
+    finishLogin();
+  } catch(e) { showLoginError(e.message); }
+}
+function showLoginError(msg) {
+  document.getElementById('loginLoading').classList.remove('show');
+  document.getElementById('loginBtn').disabled = false;
+  const el = document.getElementById('loginError'); el.textContent = msg; el.style.display = 'block';
+}
+function openAdminLogin() { document.getElementById('loginPlate').value='ADMIN'; document.getElementById('loginPin').value=''; document.getElementById('loginPin').focus(); }
+function finishLogin() {
+  document.getElementById('loginLoading').classList.remove('show');
+  document.getElementById('loginBtn').disabled = false;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'block';
+  document.getElementById('sidebarName').textContent    = currentDriver.name;
+  document.getElementById('sidebarPlate').textContent   = currentDriver.plate;
+  document.getElementById('sidebarInitial').textContent = currentDriver.name.charAt(0).toUpperCase();
+  document.getElementById('dashName').textContent       = currentDriver.name.split(' ')[0];
+
+  if (currentDriver.isAdmin) {
+    document.getElementById('adminNav').style.display        = 'block';
+    document.getElementById('navMisTurnos').style.display    = 'none';
+    document.getElementById('navAgregarTurno').style.display = 'none';
+    // Vista mensual: admin la ve (con placas), conductor la ve (con sus turnos)
+    document.getElementById('navMiPerfil').style.display     = 'none';
+  } else {
+    document.getElementById('navMisTurnos').style.display    = '';
+    document.getElementById('navAgregarTurno').style.display = '';
+    document.getElementById('navVistaMensual').style.display = '';
+    document.getElementById('navMiPerfil').style.display     = '';
+  }
+
+  document.getElementById('addDate').value = ds(new Date());
+  fillLocalities(); loadDashboard(); loadProfileData();
+  if (currentDriver.isAdmin) {
+    setTimeout(function(){ showPage('admin', document.querySelector('#adminNav .nav-item')); }, 150);
+  }
+}
+function fillLocalities() {
+  ['addLocSelect','editLocSelect','weekLocSelect','monthLocSelect','pLocality'].forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.innerHTML = '<option value="">[Loc] Selecciona la localidad...</option>' + LOCALIDADES.map(l=>`<option value="${l}">${l}</option>`).join('');
+    if (id==='pLocality' && currentDriver.locality) el.value = currentDriver.locality;
+  });
+}
+function doLogout() {
+  currentDriver=null; lastSync=null; allTurnos=[];
+  document.getElementById('appScreen').style.display='none';
+  document.getElementById('loginScreen').style.display='block';
+  document.getElementById('loginPlate').value=''; document.getElementById('loginPin').value='';
+  document.getElementById('adminNav').style.display='none';
+  showPage('dashboard', document.querySelector('.nav-item'));
+}
+
+// -- Load data --------------------------------------
+async function loadMyTurnos() {
+  const data = await api({action:'getHorarios', doc:currentDriver.doc, plate:currentDriver.plate});
+  allTurnos = data.turnos || [];
+}
+
+// -- Navigation ------------------------------------ 
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  if (el) el.classList.add('active');
+  if (name==='schedule')     loadSchedulePage('upcoming');
+  if (name==='monthly-view') loadMonthlyPage();
+  if (name==='dashboard')    loadDashboard();
+  if (name==='profile')      loadProfileData();
+  if (name==='add-schedule') initAddPage();
+  if (name==='admin')        loadAdminPage();
+}
+function switchSchedTab(tab, btn) {
+  document.querySelectorAll('#page-schedule .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); renderSchedList(tab);
+}
+
+// -- Hour picker ------------------------------------
+async function initAddPage() {
+  selStartHour=null; selEndHour=null; selOvernight=false;
+  // Cargar todos los turnos de la placa (otros conductores incluidos)
+  // para mostrar correctamente los bloques en el selector de horas
+  showLoading('Verificando disponibilidad de la placa...');
+  try {
+    var data = await api({action:'getTurnosByPlate', plate: currentDriver.plate});
+    if (data && data.turnos) {
+      // Merge: keep own turnos + add other-conductor turnos for same plate
+      var otherPlate = data.turnos.filter(function(r){ return String(r.doc)!==String(currentDriver.doc); });
+      // Remove duplicates then add
+      allTurnos = allTurnos.filter(function(r){ return String(r.plate).toUpperCase()!==String(currentDriver.plate).toUpperCase() || String(r.doc)===String(currentDriver.doc); });
+      allTurnos = allTurnos.concat(otherPlate);
+    }
+  } catch(e) { /* si falla, continuar con los datos que tenemos */ }
+  hideLoading();
+  renderStartPicker();
+}
+
+function getUsedRanges(dateStr) {
+  // Bloquear horas ya ocupadas por CUALQUIER conductor con la misma placa
+  // Un vehiculo no puede tener 2 turnos solapados sin importar quien los registro
+  var plateTurnos = allTurnos.filter(function(r) {
+    return String(r.plate).toUpperCase() === String(currentDriver.plate).toUpperCase()
+      && (r.estado==='active' || r.estado==='asignado')
+      && turnoStartDate(r) === dateStr;
+  });
+  return plateTurnos.map(function(r) {
+    return {
+      s: normH(parseHour(r.inicio)),
+      e: normH(parseHour(r.fin)),
+      doc: String(r.doc),  // para saber de quien es el turno bloqueado
+      overnight: calcHours(r.inicio,r.fin) > (parseInt(parseHour(r.fin)) - parseInt(parseHour(r.inicio)))
+    };
+  });
+}
+
+function isHourUsed(h, ranges) { return (ranges||[]).some(r => !r.overnight && h>=r.s && h<r.e); }
+function isRangeUsed(s, e, ranges, overnight) {
+  if (overnight) return false; // simplification: overnight ranges don't block same-day slots
+  return (ranges||[]).some(r => s<r.e && e>r.s);
+}
+
+function renderStartPicker(dateOverride) {
+  const startWrap = document.getElementById('startHourPicker');
+  if (!startWrap) return;
+  const dateVal   = dateOverride || document.getElementById('addDate').value;
+  const used      = getUsedRanges(dateVal);
+  startWrap.innerHTML = HOURS.map(h => {
+    const u = isHourUsed(h, used), sel = h===selStartHour;
+    return `<button type="button" class="hbtn${sel?' sel':''}${u?' used':''}" ${u?'disabled':''} onclick="pickDayStart('${h}')">${h}</button>`;
+  }).join('');
+  renderEndPicker(used);
+}
+
+function renderEndPicker(usedRanges) {
+  const endWrap = document.getElementById('endHourPicker');
+  const sec     = document.getElementById('endPickerSection');
+  if (!selStartHour) { if(sec) sec.style.display='none'; if(endWrap) endWrap.innerHTML=''; return; }
+  if (sec) sec.style.display = 'block';
+  // Show ALL 24 hours after start (enable overnight: hours before start are "next day")
+  const allHoursAfter = HOURS.filter(h => h !== selStartHour);
+  endWrap.innerHTML = allHoursAfter.map(h => {
+    const isNextDay = h <= selStartHour;
+    const sel = h===selEndHour;
+    return `<button type="button" class="hbtn${sel?' sel':''}${isNextDay?' next-day':''}" onclick="pickDayEnd('${h}')" title="${isNextDay?'Día siguiente':''}">
+      ${h}${isNextDay?'<span class="nd-tag">+1</span>':''}
+    </button>`;
+  }).join('');
+  updateAddSummary();
+}
+
+window.pickDayStart = function(h) {
+  selStartHour=h; selEndHour=null; selOvernight=false;
+  document.getElementById('startHourPicker').querySelectorAll('.hbtn').forEach(b=>b.classList.toggle('sel', b.dataset.h===h || b.textContent.trim()===h));
+  renderEndPicker(getUsedRanges(document.getElementById('addDate').value));
+};
+window.pickDayEnd = function(h) {
+  selEndHour   = h;
+  selOvernight = h <= selStartHour;
+  document.getElementById('endHourPicker').querySelectorAll('.hbtn').forEach(b=>{
+    const bh = b.textContent.replace('+1','').trim();
+    b.classList.toggle('sel', bh===h);
+  });
+  updateAddSummary();
+};
+
+function updateAddSummary() {
+  const el = document.getElementById('addSummary'); if (!el) return;
+  if (selStartHour && selEndHour) {
+    const diff = calcHoursFromStr(selStartHour, selEndHour, selOvernight);
+    const tag  = selOvernight ? ' <span class="overnight-tag">[Noche] Turno nocturno (cruza medianoche)</span>' : '';
+    el.innerHTML = `<strong>[OK] ${selStartHour} -> ${selEndHour}${selOvernight?' (+1 día)':''}</strong> &nbsp;(${diff}h)${tag}`;
+    el.className = 'add-summary ok';
+  } else if (selStartHour) {
+    el.innerHTML = `Inicio: <strong>${selStartHour}</strong> -- selecciona la hora de fin. Las horas marcadas <span class="nd-tag">+1</span> son del día siguiente.`;
+    el.className = 'add-summary partial';
+  } else {
+    el.textContent = 'Selecciona la hora de inicio del turno';
+    el.className = 'add-summary empty';
+  }
+}
+
+function calcHoursFromStr(startH, endH, overnight) {
+  const s = parseInt(startH), e = parseInt(endH);
+  if (overnight || e <= s) return (24 - s) + e;
+  return e - s;
+}
+
+// Week/month pickers (no overnight support for bulk -- single shift per day)
+function initWeekPicker() {
+  selStartHour=null; selEndHour=null; selOvernight=false;
+  document.getElementById('weekStartPicker').innerHTML =
+    HOURS.map(h=>`<button type="button" class="hbtn" onclick="pickBulkStart('${h}','week')">${h}</button>`).join('');
+  document.getElementById('weekEndSection').style.display='none';
+  updateBulkSummary('week');
+}
+function initMonthPicker() {
+  selStartHour=null; selEndHour=null; selOvernight=false;
+  document.getElementById('monthStartPicker').innerHTML =
+    HOURS.map(h=>`<button type="button" class="hbtn" onclick="pickBulkStart('${h}','month')">${h}</button>`).join('');
+  document.getElementById('monthEndSection').style.display='none';
+  updateBulkSummary('month');
+}
+
+window.pickBulkStart = function(h, mode) {
+  selStartHour=h; selEndHour=null; selOvernight=false;
+  document.getElementById(mode+'StartPicker').querySelectorAll('.hbtn').forEach(b=>b.classList.toggle('sel',b.textContent.trim()===h));
+  const sec = document.getElementById(mode+'EndSection'); if(sec) sec.style.display='block';
+  document.getElementById(mode+'EndPicker').innerHTML =
+    HOURS.filter(x=>x!==h).map(x=>{
+      const isND = x<=h;
+      return `<button type="button" class="hbtn${isND?' next-day':''}" onclick="pickBulkEnd('${x}','${mode}')">${x}${isND?'<span class="nd-tag">+1</span>':''}</button>`;
+    }).join('');
+  updateBulkSummary(mode);
+};
+window.pickBulkEnd = function(h, mode) {
+  selEndHour=h; selOvernight=h<=selStartHour;
+  document.getElementById(mode+'EndPicker').querySelectorAll('.hbtn').forEach(b=>b.classList.toggle('sel',b.textContent.replace('+1','').trim()===h));
+  updateBulkSummary(mode);
+};
+function updateBulkSummary(mode) {
+  const el = document.getElementById(mode+'Summary'); if(!el) return;
+  if (selStartHour && selEndHour) {
+    const diff = calcHoursFromStr(selStartHour, selEndHour, selOvernight);
+    const tag  = selOvernight ? ' [Noche]' : '';
+    el.innerHTML = `<strong>[OK] ${selStartHour} -> ${selEndHour}${selOvernight?' (+1)':''}${tag}</strong> (${diff}h)`;
+    el.className = 'add-summary ok';
+  } else if (selStartHour) {
+    el.textContent = `Inicio: ${selStartHour} -- selecciona fin`;
+    el.className = 'add-summary partial';
+  } else {
+    el.textContent = 'Selecciona hora de inicio';
+    el.className = 'add-summary empty';
+  }
+}
+
+function switchAddTab(tab, btn) {
+  document.querySelectorAll('#page-add-schedule .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['day','week','month'].forEach(t=>{document.getElementById('addTab-'+t).style.display=t===tab?'block':'none';});
+  selStartHour=null; selEndHour=null; selOvernight=false;
+  if (tab==='day')   initAddPage();
+  if (tab==='week')  initWeekPicker();
+  if (tab==='month') initMonthPicker();
+}
+
+// -- Save turnos ------------------------------------
+async function saveNewTurno() {
+  const dateVal  = document.getElementById('addDate').value;
+  const locality = document.getElementById('addLocSelect').value;
+  const notes    = document.getElementById('addNotes').value.trim();
+  if (!dateVal)      { showToast('Selecciona una fecha.','warning'); return; }
+  if (!locality)     { showToast('Selecciona la localidad.','warning'); return; }
+  if (!selStartHour) { showToast('Selecciona la hora de inicio.','warning'); return; }
+  if (!selEndHour)   { showToast('Selecciona la hora de fin.','warning'); return; }
+  if (!canAdd(dateVal, selStartHour)) { showToast('[Aviso] El turno debe ser en una hora futura.','warning'); return; }
+
+  // Validar conflicto de placa con otros conductores
+  var plateConflict = allTurnos.filter(function(r) {
+    return String(r.plate).toUpperCase() === String(currentDriver.plate).toUpperCase()
+      && (r.estado==='active' || r.estado==='asignado')
+      && turnoStartDate(r) === dateVal
+      && String(r.doc) !== String(currentDriver.doc);
+  });
+  var startH = normH(selStartHour), endH = normH(selEndHour);
+  var hasConflict = plateConflict.some(function(r) {
+    var rs = normH(parseHour(r.inicio)), re2 = normH(parseHour(r.fin));
+    return startH < re2 && endH > rs;
+  });
+  if (hasConflict) {
+    showToast('[Error] La placa ' + currentDriver.plate + ' ya tiene un turno en ese horario registrado por otro conductor.', 'error');
+    return;
+  }
+
+  const inicio = fmtDT(dateVal, selStartHour);
+  // Si el turno cruza medianoche, el fin es en el día siguiente
+  const finDate = selOvernight ? ds((() => { const d=new Date(dateVal+'T12:00:00'); d.setDate(d.getDate()+1); return d; })()) : dateVal;
+  const fin    = fmtDT(finDate, selEndHour);
+
+  showLoading('Guardando en Google Sheets...');
+  try {
+    await api({action:'addTurno', doc:currentDriver.doc, plate:currentDriver.plate, inicio, fin, locality, notes});
+    await loadMyTurnos();
+    selStartHour=null; selEndHour=null; selOvernight=false;
+    initAddPage();
+    loadDashboard();
+    showToast(`[OK] Turno ${inicio} -> ${fin} guardado.`, 'success');
+  } catch(e) { showToast('[Error] '+e.message,'error'); }
+  hideLoading();
+}
+
+async function saveWeekTurnos() {
+  const dateVal  = document.getElementById('weekStartDate').value;
+  const locality = document.getElementById('weekLocSelect').value;
+  if (!dateVal||!locality) { showToast('Completa fecha y localidad.','warning'); return; }
+  if (!selStartHour||!selEndHour) { showToast('Selecciona hora de inicio y fin.','warning'); return; }
+  const checked = [...document.querySelectorAll('.week-day-cb:checked')].map(cb=>parseInt(cb.value));
+  if (!checked.length) { showToast('Selecciona al menos un día.','warning'); return; }
+
+  const base = new Date(dateVal+'T12:00:00');
+  const dow  = base.getDay();
+  const mon  = new Date(base); mon.setDate(base.getDate()-(dow===0?6:dow-1));
+
+  showLoading('Guardando semana...');
+  let n=0, skipped=0;
+  for (let i=0; i<7; i++) {
+    const d = new Date(mon); d.setDate(mon.getDate()+i);
+    if (!checked.includes(d.getDay())) continue;
+    const date = ds(d);
+    if (!canAdd(date, selStartHour)) { skipped++; continue; }
+    const finDate = selOvernight ? ds((() => { const fd=new Date(d); fd.setDate(fd.getDate()+1); return fd; })()) : date;
+    try {
+      await api({action:'addTurno', doc:currentDriver.doc, plate:currentDriver.plate,
+        inicio:fmtDT(date,selStartHour), fin:fmtDT(finDate,selEndHour), locality, notes:''});
+      n++;
+    } catch(e) { console.warn('Error', date, e.message); }
+  }
+  await loadMyTurnos(); loadDashboard();
+  if (n>0) showToast(`[OK] ${n} turno(s) guardados${skipped?` (${skipped} omitidos <12h)`:''}`, 'success');
+  else if (skipped>0) showToast(`[Aviso] Todos los días tienen <12h de anticipación.`, 'warning');
+  else showToast(`[Aviso] No se guardó ningún turno.`, 'warning');
+  hideLoading();
+}
+
+async function saveMonthTurnos() {
+  const mVal    = document.getElementById('monthMonthDate').value;
+  const locality= document.getElementById('monthLocSelect').value;
+  if (!mVal||!locality) { showToast('Completa mes y localidad.','warning'); return; }
+  if (!selStartHour||!selEndHour) { showToast('Selecciona horario.','warning'); return; }
+  const checked = [...document.querySelectorAll('.month-day-cb:checked')].map(cb=>parseInt(cb.value));
+  if (!checked.length) { showToast('Selecciona al menos un día.','warning'); return; }
+
+  const [y,m] = mVal.split('-').map(Number);
+  const dim   = new Date(y,m,0).getDate();
+  showLoading('Guardando mes...');
+  let n=0, skipped=0;
+  for (let d=1; d<=dim; d++) {
+    const dt = new Date(y,m-1,d);
+    if (!checked.includes(dt.getDay())) continue;
+    const date = ds(dt);
+    if (!canAdd(date, selStartHour)) { skipped++; continue; }
+    const finDt  = selOvernight ? new Date(dt.getTime()+86400000) : dt;
+    const finDate= ds(finDt);
+    try {
+      await api({action:'addTurno', doc:currentDriver.doc, plate:currentDriver.plate,
+        inicio:fmtDT(date,selStartHour), fin:fmtDT(finDate,selEndHour), locality, notes:''});
+      n++;
+    } catch(e) { console.warn('Error',date,e.message); }
+  }
+  await loadMyTurnos(); loadDashboard();
+  if (n>0) showToast(`[OK] ${n} turno(s) del mes guardados${skipped?` (${skipped} omitidos)`:''}`, 'success');
+  else showToast(`[Aviso] ${skipped} días omitidos por <12h de anticipación.`, 'warning');
+  hideLoading();
+}
+
+// -- Schedule list ----------------------------------
+async function loadSchedulePage(tab) {
+  if (currentDriver && currentDriver.isAdmin) { renderSchedList(tab); return; }
+  showLoading('Cargando turnos...');
+  try { await loadMyTurnos(); } catch(e) { showToast('[Error] '+e.message,'error'); }
+  hideLoading();
+  renderSchedList(tab);
+}
+
+function parseTurnoEnd(r) {
+  try {
+    var d  = parseDate(r.fin);
+    var hm = parseHour(r.fin).split(':');
+    if (!d || d.length < 10) return new Date(0);
+    var dt = new Date(d + 'T00:00:00');
+    dt.setHours(parseInt(hm[0])||0, parseInt(hm[1])||0, 0, 0);
+    return dt;
+  } catch(e) { return new Date(0); }
+}
+
+function renderSchedList(tab) {
+  const el = document.getElementById('schedList');
+  if (currentDriver && currentDriver.isAdmin) {
+    el.innerHTML='<div class="empty-state">El administrador no tiene turnos personales.</div>';
+    return;
+  }
+  const now = new Date();
+  let rows = tab==='upcoming'
+    ? myActive().filter(r=>parseTurnoEnd(r)>=now).sort((a,b)=>a.inicio.localeCompare(b.inicio))
+    : myAll().filter(r=>r.estado==='cancelled'||parseTurnoEnd(r)<now).sort((a,b)=>b.inicio.localeCompare(a.inicio));
+
+  if (!rows.length) { el.innerHTML='<div class="empty-state">Sin turnos en esta categoria.</div>'; return; }
+
+  el.innerHTML = rows.map(r => {
+    const locked    = !canEditRow(r);
+    const cancelled = r.estado==='cancelled';
+    const asignado  = r.estado==='asignado';
+    const diff      = calcHours(r.inicio, r.fin);
+    const overnight = parseDate(r.fin) !== parseDate(r.inicio);
+    const timeLabel = parseHour(r.inicio)+' -> '+parseHour(r.fin)+(overnight?' [+1 dia]':'');
+    const estadoLabel = r.estado==='active'?'Activo':r.estado==='asignado'?'Confirmado':'Cancelado';
+    return '<div class="sched-item'+(cancelled?' cancelled':asignado?' asignado':'')+'">'+
+      '<div class="sched-item-id">'+r.id+'</div>'+
+      '<div class="sched-item-main">'+
+        '<div class="sched-row"><span class="sched-date">'+fmtDateHuman(r.inicio)+'</span></div>'+
+        '<div class="sched-row" style="margin-top:3px">'+
+          '<span class="sched-time">'+timeLabel+'</span>'+
+          '<span class="sched-dur">'+diff+'h</span>'+
+          '<span class="estado-badge estado-'+r.estado+'">'+estadoLabel+'</span>'+
+        '</div>'+
+        '<div class="sched-meta-row">'+
+          (r.locality?'<span class="loc-tag">[Loc] '+r.locality+'</span>':'')+
+          (r.notes?'<span class="notes-tag">'+r.notes+'</span>':'')+
+          (cancelled&&r.motivoCan?'<span class="cancel-reason">Motivo: '+r.motivoCan+'</span>':'')+
+        '</div>'+
+      '</div>'+
+      '<div class="sched-actions">'+
+        (!cancelled&&!asignado?
+          '<button class="btn-edit-sm'+(locked?' locked':'')+'" onclick="'+(locked?'showToast(\'No se puede modificar: menos de 12 horas.\',\'error\')':'openEditModal('+r.sheetRow+')')+'">Ed</button>'+
+          '<button class="btn-cancel-sm'+(locked?' locked':'')+'" onclick="'+(locked?'showToast(\'No se puede modificar: menos de 12 horas.\',\'error\')':'openCancelModal('+r.sheetRow+')')+'">x</button>'
+        :asignado?'<span style="font-size:11px;color:var(--success);font-weight:600">Despachado</span>':'')+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+
+// -- Edit modal ------------------------------------ 
+function openEditModal(sheetRow) {
+  const r = allTurnos.find(x=>x.sheetRow===sheetRow);
+  if (!r||!canEditRow(r)) { showToast('[Error] No se puede editar.','error'); return; }
+  editRowIndex = sheetRow;
+  editStartH   = normH(parseHour(r.inicio));
+  editEndH     = normH(parseHour(r.fin));
+  editOvernight= parseDate(r.fin) !== parseDate(r.inicio);
+  document.getElementById('editDate').value     = parseDate(r.inicio);
+  document.getElementById('editLocSelect').value= r.locality||'';
+  document.getElementById('editNotes2').value   = r.notes||'';
+  renderEditPicker();
+  document.getElementById('editModal').classList.add('open');
+}
+function renderEditPicker() {
+  const dateVal   = document.getElementById('editDate').value;
+  const otherRanges = allTurnos.filter(r=>r.doc===currentDriver.doc&&r.plate===currentDriver.plate&&r.estado==='active'&&turnoStartDate(r)===dateVal&&r.sheetRow!==editRowIndex)
+    .map(r=>({s:normH(parseHour(r.inicio)),e:normH(parseHour(r.fin))}));
+
+  document.getElementById('editStartPicker').innerHTML = HOURS.map(h=>{
+    const u=isHourUsed(h,otherRanges),sel=h===editStartH;
+    return `<button type="button" class="hbtn${sel?' sel':''}${u?' used':''}" ${u?'disabled':''} onclick="ePickStart('${h}')">${h}</button>`;
+  }).join('');
+  renderEditEnd(otherRanges);
+}
+function renderEditEnd(usedRanges) {
+  const sec = document.getElementById('editEndPickerSection');
+  if (!editStartH) { sec.style.display='none'; return; }
+  sec.style.display='block';
+  document.getElementById('editEndPicker').innerHTML = HOURS.filter(h=>h!==editStartH).map(h=>{
+    const isND = h<=editStartH, sel=h===editEndH;
+    return `<button type="button" class="hbtn${sel?' sel':''}${isND?' next-day':''}" onclick="ePickEnd('${h}')">${h}${isND?'<span class="nd-tag">+1</span>':''}</button>`;
+  }).join('');
+  updateEditSum();
+}
+window.ePickStart = h => { editStartH=h; editEndH=null; editOvernight=false; renderEditPicker(); };
+window.ePickEnd   = h => { editEndH=h; editOvernight=h<=editStartH; document.getElementById('editEndPicker').querySelectorAll('.hbtn').forEach(b=>b.classList.toggle('sel',b.textContent.replace('+1','').trim()===h)); updateEditSum(); };
+function updateEditSum() {
+  const el=document.getElementById('editSummary'); if(!el) return;
+  if (editStartH&&editEndH) {
+    const diff=calcHoursFromStr(editStartH,editEndH,editOvernight);
+    el.innerHTML=`<strong>[OK] ${editStartH} -> ${editEndH}${editOvernight?' (+1)':''}</strong> (${diff}h)${editOvernight?' [Noche]':''}`;
+    el.className='add-summary ok';
+  } else if (editStartH) { el.textContent=`Inicio: ${editStartH}`; el.className='add-summary partial'; }
+  else { el.textContent='Selecciona el horario'; el.className='add-summary empty'; }
+}
+async function saveEditTurno() {
+  const dateVal  = document.getElementById('editDate').value;
+  const locality = document.getElementById('editLocSelect').value;
+  const notes    = document.getElementById('editNotes2').value.trim();
+  if (!locality)           { showToast('Selecciona localidad.','warning'); return; }
+  if (!editStartH||!editEndH) { showToast('Selecciona horario completo.','warning'); return; }
+  if (!canModify(dateVal, editStartH)) { showToast('[Error] Menos de 12 horas para modificar este turno.','error'); return; }
+  const finDate = editOvernight ? ds((() => { const d=new Date(dateVal+'T12:00:00'); d.setDate(d.getDate()+1); return d; })()) : dateVal;
+  showLoading('Actualizando...');
+  try {
+    await api({action:'updateTurno', sheetRow:editRowIndex, inicio:fmtDT(dateVal,editStartH), fin:fmtDT(finDate,editEndH), locality, notes});
+    await loadMyTurnos(); closeModal('editModal'); renderSchedList('upcoming'); loadDashboard();
+    showToast('[OK] Turno actualizado.','success');
+  } catch(e) { showToast('[Error] '+e.message,'error'); }
+  hideLoading();
+}
+
+// -- Cancel modal ---------------------------------- 
+function openCancelModal(sheetRow) {
+  const r = allTurnos.find(x=>x.sheetRow===sheetRow);
+  if (!r||!canEditRow(r)) { showToast('[Error] No se puede cancelar.','error'); return; }
+  editRowIndex = sheetRow;
+  document.getElementById('cancelReason').value = '';
+  document.getElementById('cancelInfo').textContent = `${r.inicio} -> ${r.fin}`;
+  document.getElementById('cancelModal').classList.add('open');
+}
+async function confirmCancel() {
+  const motivo = document.getElementById('cancelReason').value.trim();
+  showLoading('Cancelando...');
+  try {
+    await api({action:'cancelTurno', sheetRow:editRowIndex, motivo});
+    await loadMyTurnos(); closeModal('cancelModal'); renderSchedList('upcoming'); loadDashboard();
+    showToast('Turno cancelado.','warning');
+  } catch(e) { showToast('[Error] '+e.message,'error'); }
+  hideLoading();
+}
+
+// -- CALENDAR (FIXED) ------------------------------ 
+async function loadMonthlyPage() {
+  showLoading('Cargando...');
+  try {
+    if (currentDriver && currentDriver.isAdmin) {
+      var data = await api({action:'getAllTurnos'});
+      allTurnos = data.turnos || [];
+    } else {
+      await loadMyTurnos();
+    }
+  } catch(e) { showToast('[Error] '+e.message, 'error'); }
+  hideLoading();
+  renderCalendar();
+  renderWeekSummary();
+}
+
+function buildDayMap() {
+  var sm = {};
+  var rows = (currentDriver && currentDriver.isAdmin)
+    ? allTurnos.filter(function(r){ return r.estado==='active' || r.estado==='asignado'; })
+    : myActive();
+  rows.forEach(function(r) {
+    var d = turnoStartDate(r);
+    if (!sm[d]) sm[d] = [];
+    sm[d].push(r);
+  });
+  return sm;
+}
+
+function renderCalendar() {
+  var sm    = buildDayMap();
+  var isAdm = currentDriver && currentDriver.isAdmin;
+  var y=viewMonth.getFullYear(), m=viewMonth.getMonth();
+  var MN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  document.getElementById('monthTitle').textContent   = MN[m]+' '+y;
+  document.getElementById('weekSumTitle').textContent = MN[m]+' '+y;
+  var grid=document.getElementById('calGrid'), today=ds(new Date());
+  grid.innerHTML='';
+  var dow=new Date(y,m,1).getDay(); dow=dow===0?6:dow-1;
+  for (var i=0;i<dow;i++){ var x=document.createElement('div');x.className='cal-day other';grid.appendChild(x); }
+  var dim=new Date(y,m+1,0).getDate();
+  for (var d=1;d<=dim;d++) {
+    var date=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    var rows=sm[date]||[];
+    var el=document.createElement('div');
+    el.className='cal-day'+(date===today?' today':'')+(rows.length?' has-s clickable':'');
+    // Click: admin opens consolidado for that day; conductor shows schedule
+    (function(dt, hasRows) {
+      if (hasRows) {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', function() {
+          if (isAdm) {
+            // Switch to consolidado tab filtered by date
+            var tab = document.querySelector('#page-admin .tabs .tab-btn:nth-child(2)');
+            switchAdminTab('consolidado', tab);
+            var df = document.getElementById('filterConsolidadoDate');
+            if (df) { df.value = dt; filterConsolidado(); }
+            showPage('admin', document.querySelector('#adminNav .nav-item'));
+          }
+        });
+      }
+    })(date, rows.length > 0);
+
+    var num=document.createElement('div'); num.className='cal-day-num'; num.textContent=d; el.appendChild(num);
+    if (isAdm) {
+      rows.slice(0,4).forEach(function(r){
+        var b=document.createElement('div');
+        b.className='cal-plate-row'+(r.estado==='asignado'?' cal-plate-desp':'');
+        b.textContent=r.plate+(r.estado==='asignado'?' [D]':'');
+        el.appendChild(b);
+      });
+      if (rows.length>4){ var mo=document.createElement('div'); mo.className='cal-more'; mo.textContent='+'+(rows.length-4)+' mas'; el.appendChild(mo); }
+      if (rows.length>0){
+        var desp=rows.filter(function(r){return r.estado==='asignado';}).length;
+        var ct=document.createElement('div'); ct.className='cal-count';
+        ct.textContent=rows.length+'t'+(desp?' '+desp+'D':''); el.appendChild(ct);
+      }
+    } else {
+      rows.slice(0,2).forEach(function(r){
+        var b=document.createElement('div'); b.className='cal-shift-row';
+        var overnight=parseDate(r.fin)!==parseDate(r.inicio);
+        b.textContent=parseHour(r.inicio)+'-'+parseHour(r.fin)+(overnight?' +1':'');
+        el.appendChild(b);
+      });
+      if (rows.length>2){ var mo=document.createElement('div'); mo.className='cal-more'; mo.textContent='+'+(rows.length-2); el.appendChild(mo); }
+    }
+    grid.appendChild(el);
+  }
+  renderWeekSummary();
+}
+
+function changeMonth(dir) { viewMonth.setMonth(viewMonth.getMonth()+dir); loadMonthlyPage(); }
+
+function renderWeekSummary() {
+  const sm    = buildDayMap();
+  const isAdm = currentDriver && currentDriver.isAdmin;
+  const y=viewMonth.getFullYear(), m=viewMonth.getMonth();
+  const dim=new Date(y,m+1,0).getDate();
+  let dow=new Date(y,m,1).getDay(); dow=dow===0?6:dow-1;
+  const weeks=[]; let wk=[];
+  for (let p=0;p<dow;p++) wk.push(null);
+  for (let d=1;d<=dim;d++) {
+    const date=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    wk.push({d,date,rows:sm[date]||[]});
+    if (wk.length===7){weeks.push(wk);wk=[];}
+  }
+  if (wk.length){while(wk.length<7)wk.push(null);weeks.push(wk);}
+  const DN=['Lun','Mar','Mie','Jue','Vie','Sab','Dom'];
+  const el = document.getElementById('weekSumGrid');
+
+  if (isAdm) {
+    el.innerHTML =
+      '<div class="week-band hdr"><div class="band-lbl"></div>'+
+      DN.map(function(n){return '<div class="band-dh">'+n+'</div>';}).join('')+
+      '</div>'+
+      weeks.map(function(wk,wi){
+        return '<div class="week-band">'+
+          '<div class="band-lbl">Sem '+(wi+1)+'</div>'+
+          wk.map(function(day){
+            if (!day) return '<div class="band-cell phantom"></div>';
+            var rows=day.rows, n=rows.length;
+            var desp=rows.filter(function(r){return r.estado==='asignado';}).length;
+            var pend=n-desp;
+            if (!n) return '<div class="band-cell"></div>';
+            return '<div class="band-cell adm-cell" title="'+day.date+'">'+
+              '<span class="bc-total">'+n+'</span>'+
+              (pend?'<span class="bc-pend">'+pend+'P</span>':'')+
+              (desp?'<span class="bc-desp">'+desp+'D</span>':'')+
+            '</div>';
+          }).join('')+
+        '</div>';
+      }).join('');
+  } else {
+    el.innerHTML =
+      '<div class="week-band hdr"><div class="band-lbl"></div>'+
+      DN.map(function(n){return '<div class="band-dh">'+n+'</div>';}).join('')+
+      '</div>'+
+      weeks.map(function(wk,wi){
+        return '<div class="week-band">'+
+          '<div class="band-lbl">Sem '+(wi+1)+'</div>'+
+          wk.map(function(day){
+            if (!day) return '<div class="band-cell phantom"></div>';
+            var n=day.rows.length;
+            var totalH=day.rows.reduce(function(a,r){return a+calcHours(r.inicio,r.fin);},0);
+            return '<div class="band-cell'+(n?' has-data':'')+'" title="'+day.date+'">'+
+              (n?'<span class="bc-n">'+totalH+'h</span><span class="bc-s">'+n+'t</span>':'')+
+            '</div>';
+          }).join('')+
+        '</div>';
+      }).join('');
+  }
+}
+
+// -- Dashboard --------------------------------------
+async function loadDashboard() {
+  if (!currentDriver) return;
+  showLoading('Cargando...');
+  try {
+    if (currentDriver.isAdmin) {
+      var data = await api({action:'getAllTurnos'});
+      allTurnos = data.turnos || [];
+    } else {
+      await loadMyTurnos();
+    }
+  } catch(e) {}
+  hideLoading();
+
+  var now = new Date();
+  var mp  = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+
+  if (currentDriver.isAdmin) {
+    // Dashboard del admin: stats globales del mes
+    var active = allTurnos.filter(function(r){ return r.estado==='active'||r.estado==='asignado'; });
+    var ms     = active.filter(function(r){ return turnoStartDate(r).startsWith(mp); });
+    var totalH = ms.reduce(function(a,r){ return a+calcHours(r.inicio,r.fin); }, 0);
+    var desp   = ms.filter(function(r){ return r.estado==='asignado'; }).length;
+    document.getElementById('statMonth').textContent = ms.length;
+    document.getElementById('statHours').textContent = totalH;
+    document.getElementById('statNext').textContent  = desp;
+    document.getElementById('statNextDate').textContent = 'despachados este mes';
+    // Mini calendario semanal con todas las placas
+    var sm = buildDayMap();
+    var days = []; for(var i=0;i<7;i++){var d=new Date(now);d.setDate(now.getDate()+i);days.push(d);}
+    var html7 = '<div class="week7">';
+    days.forEach(function(d){
+      var date  = ds(d), rows = sm[date]||[], isT = date===ds(now);
+      var totalH2 = rows.reduce(function(a,r){return a+calcHours(r.inicio,r.fin);},0);
+      html7 += '<div class="w7-col'+(isT?' today':'')+'">'
+        +'<div class="w7-dow">'+d.toLocaleDateString('es-CO',{weekday:'short'}).toUpperCase()+'</div>'
+        +'<div class="w7-num">'+d.getDate()+'</div>'
+        +'<div class="w7-cell'+(rows.length?' filled':'')+'">'+
+        (rows.length?'<strong>'+rows.length+'</strong><small>t</small>':'·')+
+        '</div>'
+        +(rows[0]?'<div class="w7-loc">'+rows[0].plate+'</div>':'')
+        +'</div>';
+    });
+    html7 += '</div>';
+    document.getElementById('dashWeek').innerHTML = html7;
+  } else {
+    // Dashboard del conductor: sus propios turnos
+    var active = myActive();
+    var ms     = active.filter(function(r){ return turnoStartDate(r).startsWith(mp); });
+    var totalH = ms.reduce(function(a,r){ return a+calcHours(r.inicio,r.fin); }, 0);
+    document.getElementById('statMonth').textContent = ms.length;
+    document.getElementById('statHours').textContent = totalH;
+    var upcoming = active.filter(function(r){ return parseTurnoEnd(r) >= now; })
+      .sort(function(a,b){ return a.inicio.localeCompare(b.inicio); });
+    if (upcoming.length) {
+      document.getElementById('statNext').textContent     = parseHour(upcoming[0].inicio);
+      document.getElementById('statNextDate').textContent = fmtDateShort(upcoming[0].inicio)+(upcoming[0].locality?' · '+upcoming[0].locality:'');
+    } else {
+      document.getElementById('statNext').textContent     = '--';
+      document.getElementById('statNextDate').textContent = 'sin programar';
+    }
+    var sm   = buildDayMap();
+    var days = []; for(var i=0;i<7;i++){var d=new Date(now);d.setDate(now.getDate()+i);days.push(d);}
+    var html7 = '<div class="week7">';
+    days.forEach(function(d){
+      var date  = ds(d), rows = sm[date]||[], isT = date===ds(now);
+      var totalH2 = rows.reduce(function(a,r){return a+calcHours(r.inicio,r.fin);},0);
+      html7 += '<div class="w7-col'+(isT?' today':'')+'">'
+        +'<div class="w7-dow">'+d.toLocaleDateString('es-CO',{weekday:'short'}).toUpperCase()+'</div>'
+        +'<div class="w7-num">'+d.getDate()+'</div>'
+        +'<div class="w7-cell'+(rows.length?' filled':'')+'">'+
+        (rows.length?'<strong>'+totalH2+'h</strong><small>'+rows.length+'t</small>':'·')+
+        '</div>'
+        +(rows[0]?'<div class="w7-loc">'+(rows[0].locality||'').split(' ')[0]+'</div>':'')
+        +'</div>';
+    });
+    html7 += '</div>';
+    document.getElementById('dashWeek').innerHTML = html7;
+  }
+  updateSyncUI();
+}
+
+// -- Profile ----------------------------------------
+function loadProfileData() {
+  if (!currentDriver) return;
+  document.getElementById('pName').value =currentDriver.name||'';
+  document.getElementById('pPhone').value=currentDriver.phone||'';
+  document.getElementById('pDoc').value  =currentDriver.doc||'';
+  document.getElementById('pPlate').value=currentDriver.plate||'';
+  document.getElementById('pVType').value=currentDriver.vehicleType||'';
+  document.getElementById('pVNum').value =currentDriver.vehicleNum||'';
+  const pl=document.getElementById('pLocality'); if(pl) pl.value=currentDriver.locality||'';
+  const now=new Date(), mp=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const active=myActive(), ms=active.filter(r=>turnoStartDate(r).startsWith(mp));
+  const totalH=ms.reduce((a,r)=>a+calcHours(r.inicio,r.fin),0);
+  document.getElementById('profileStats').innerHTML=`
+    <div class="stat-list">
+      <div class="stat-row"><span>Turnos activos totales</span><strong>${active.length}</strong></div>
+      <div class="stat-row"><span>Turnos este mes</span><strong>${ms.length}</strong></div>
+      <div class="stat-row"><span>Horas este mes</span><strong style="color:var(--blue)">${totalH}h</strong></div>
+      <div class="stat-row"><span>Localidad habitual</span><strong>${currentDriver.locality||'--'}</strong></div>
+    </div>`;
+}
+async function saveProfile() {
+  if (currentDriver.isAdmin) { showToast('Admin no tiene perfil editable.','warning'); return; }
+  showLoading('Guardando...');
+  try {
+    const upd={action:'saveProfile', rowIndex:currentDriver.rowIndex,
+      name:     document.getElementById('pName').value.trim()||currentDriver.name,
+      phone:    document.getElementById('pPhone').value.trim(),
+      vehicleType:document.getElementById('pVType').value,
+      vehicleNum: document.getElementById('pVNum').value.trim(),
+      locality:   document.getElementById('pLocality').value};
+    await api(upd);
+    Object.assign(currentDriver,{name:upd.name,phone:upd.phone,vehicleType:upd.vehicleType,vehicleNum:upd.vehicleNum,locality:upd.locality});
+    document.getElementById('sidebarName').textContent    =currentDriver.name;
+    document.getElementById('sidebarInitial').textContent =currentDriver.name.charAt(0).toUpperCase();
+    document.getElementById('dashName').textContent       =currentDriver.name.split(' ')[0];
+    showToast('[OK] Perfil guardado.','success');
+  } catch(e) { showToast('[Error] '+e.message,'error'); }
+  hideLoading();
+}
+
+// -- ADMIN -- vista consolidada por día --------------
+async function loadAdminPage() {
+  showLoading('Cargando desde Sheets...');
+  try {
+    const [dRes,tRes] = await Promise.all([api({action:'getAllDrivers'}), api({action:'getAllTurnos'})]);
+    driverCache = dRes.drivers||[];
+    allTurnos   = tRes.turnos||[];
+    renderAdminTable(driverCache);
+    showToast(`[OK] ${driverCache.length} conductores, ${allTurnos.filter(r=>r.estado==='active').length} turnos activos.`,'success');
+  } catch(e) { showToast('[Error] '+e.message,'error'); }
+  hideLoading();
+}
+function filterDrivers() {
+  const q=document.getElementById('searchDriver').value.toLowerCase();
+  renderAdminTable(driverCache.filter(d=>d.name.toLowerCase().includes(q)||d.plate.toLowerCase().includes(q)||(d.locality||'').toLowerCase().includes(q)));
+}
+function renderAdminTable(drivers) {
+  var now=new Date(), mp=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  var VN={bus:'Bus',buselec:'Bus Elec.',micro:'Microbus',van:'Van',camion:'Camion',taxi:'Taxi',otro:'Otro','':'--'};
+  var tbody = document.getElementById('adminTableBody');
+  if (!drivers.length) { tbody.innerHTML='<tr><td colspan="6" class="empty-td">Sin resultados.</td></tr>'; return; }
+  tbody.innerHTML = drivers.map(function(d){
+    var ms=allTurnos.filter(function(r){return r.doc===d.doc&&r.plate===d.plate&&(r.estado==='active'||r.estado==='asignado')&&turnoStartDate(r).startsWith(mp);});
+    var totalH=ms.reduce(function(a,r){return a+calcHours(r.inicio,r.fin);},0);
+    var safeDoc   = String(d.doc||'').replace(/'/g,"\\'");
+    var safePlate = String(d.plate||'').replace(/'/g,"\\'");
+    var safeName  = String(d.name||'').replace(/'/g,"\\'");
+    return '<tr class="driver-row" onclick="openDriverTurnos(\'' + safeDoc + '\',\'' + safePlate + '\',\'' + safeName + '\')" style="cursor:pointer" title="Ver turnos">'
+      +'<td class="td-name">'+d.name+'</td>'
+      +'<td class="mono">'+d.doc+'</td>'
+      +'<td><span class="plate-badge">'+d.plate+'</span></td>'
+      +'<td>'+(d.locality?'<span class="loc-tag">[Loc] '+d.locality+'</span>':'--')+'</td>'
+      +'<td>'+(VN[d.vehicleType]||'--')+(d.vehicleNum?' #'+d.vehicleNum:'')+'</td>'
+      +'<td><strong>'+ms.length+'</strong> turnos / <strong style="color:var(--blue)">'+totalH+'h</strong></td>'
+      +'</tr>';
+  }).join('');
+}
+
+// Muestra modal con turnos del conductor seleccionado
+function openDriverTurnos(doc, plate, name) {
+  doc = String(doc||''); plate = String(plate||''); name = String(name||'');
+  var turnos = allTurnos.filter(function(r){ return String(r.doc)===doc && String(r.plate)===plate; })
+    .sort(function(a,b){ return b.inicio.localeCompare(a.inicio); });
+  var modal = document.getElementById('driverTurnosModal');
+  document.getElementById('driverTurnosTitle').textContent = name+' ('+plate+')';
+  var now = new Date();
+  document.getElementById('driverTurnosList').innerHTML = turnos.length ? turnos.map(function(r){
+    var h = calcHours(r.inicio, r.fin);
+    var isFut = parseTurnoEnd(r) >= now;
+    var estadoLabel = r.estado==='active'?'Activo':r.estado==='asignado'?'Confirmado':'Cancelado';
+    return '<div class="dt-row dt-'+r.estado+'">'
+      +'<div class="dt-date">'+fmtDateHuman(r.inicio)+'</div>'
+      +'<div class="dt-time">'+parseHour(r.inicio)+' -> '+parseHour(r.fin)+' ('+h+'h)'
+        +(r.locality?' · '+r.locality:'')+'</div>'
+      +'<div class="dt-estado"><span class="estado-badge estado-'+r.estado+'">'+estadoLabel+'</span>'
+        +(isFut&&r.estado==='active'?'<button class="btn-desp-sm" onclick="adminCancelTurno('+r.sheetRow+',this.dataset.name)" data-name="'+name.replace(/"/g,"&quot;")+'">Cancelar</button>':'')
+      +'</div>'
+      +'</div>';
+  }).join('') : '<div class="empty-state">Sin turnos registrados.</div>';
+  modal.classList.add('open');
+}
+
+async function adminCancelTurno(sheetRow, driverNameOrEl) {
+  var driverName = String((typeof driverNameOrEl === 'string') ? driverNameOrEl : (event && event.target ? event.target.dataset.name : ''));
+  if (!confirm('Cancelar turno de '+driverName+'?')) return;
+  showLoading('Cancelando...');
+  try {
+    await api({action:'cancelTurno', sheetRow:sheetRow, motivo:'Cancelado por admin'});
+    var idx = allTurnos.findIndex(function(r){return r.sheetRow===sheetRow;});
+    if (idx!==-1) allTurnos[idx].estado='cancelled';
+    showToast('Turno cancelado.','warning');
+    // Refresh the modal
+    var t = allTurnos.find(function(r){return r.sheetRow===sheetRow;});
+    if (t) openDriverTurnos(t.doc, t.plate, driverName);
+  } catch(e){ showToast('[Error] '+e.message,'error'); }
+  hideLoading();
+}
+
+// -- ADMIN -- vista consolidada por día (NUEVA) ------
+
+//    ASIGNAR turno (despacho admin)                       
+async function asignarTurno(sheetRow) {
+  const r = allTurnos.find(x => x.sheetRow === sheetRow);
+  if (!r) return;
+  if (r.estado === 'asignado') {
+    showToast('Este turno ya fue despachado.', 'warning'); return;
+  }
+  if (!confirm('Despachar a ' + r.plate + ' (' + parseHour(r.inicio) + ' -> ' + parseHour(r.fin) + ')? Esta accion no se puede deshacer.')) return;
+  showLoading('Marcando como despachado...');
+  try {
+    await api({action: 'asignarTurno', sheetRow: sheetRow});
+    // Actualizar localmente
+    const idx = allTurnos.findIndex(x => x.sheetRow === sheetRow);
+    if (idx !== -1) allTurnos[idx].estado = 'asignado';
+    showConsolidado();
+    showToast('[OK] Placa ' + r.plate + ' despachada.', 'success');
+  } catch(e) { showToast('[Error] ' + e.message, 'error'); }
+  hideLoading();
+}
+
+// filterConsolidado: aplica filtros de fecha y conductor
+function filterConsolidado() {
+  showConsolidado();
+}
+function clearConsolidadoFilter() {
+  var df = document.getElementById('filterConsolidadoDate');
+  var cf = document.getElementById('filterConsolidadoConductor');
+  if (df) df.value = '';
+  if (cf) cf.value = '';
+  showConsolidado();
+}
+
+function showConsolidado() {
+  var now    = new Date();
+  var mp     = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  var dateF  = (document.getElementById('filterConsolidadoDate')||{}).value || '';
+  var condF  = ((document.getElementById('filterConsolidadoConductor')||{}).value||'').toLowerCase().trim();
+
+  // Mostrar active Y asignado del mes
+  var mesRows = allTurnos.filter(function(r) {
+    return (r.estado==='active'||r.estado==='asignado') && turnoStartDate(r).startsWith(mp);
+  });
+
+  // Aplicar filtro de fecha
+  if (dateF) {
+    mesRows = mesRows.filter(function(r){ return turnoStartDate(r)===dateF; });
+  }
+
+  // Aplicar filtro de conductor (nombre o placa)
+  if (condF) {
+    mesRows = mesRows.filter(function(r) {
+      var driver = driverCache.find(function(d){ return d.doc===r.doc && d.plate===r.plate; });
+      var name   = driver ? driver.name.toLowerCase() : '';
+      return name.includes(condF) || r.plate.toLowerCase().includes(condF);
+    });
+  }
+
+  // Agrupar por fecha
+  var byDay = {};
+  mesRows.forEach(function(r) {
+    var d = turnoStartDate(r);
+    if (!byDay[d]) byDay[d] = [];
+    byDay[d].push(r);
+  });
+
+  var sortedDays = Object.keys(byDay).sort();
+  var wrap = document.getElementById('consolidadoWrap');
+
+  if (!sortedDays.length) {
+    wrap.innerHTML = '<div class="empty-state">Sin turnos'+(dateF?' para el '+dateF:'')+(condF?' de "'+condF+'"':'')+'.</div>';
+    document.getElementById('consolidadoCard').style.display = 'block';
+    return;
+  }
+
+  wrap.innerHTML = sortedDays.map(function(date) {
+    var rows = byDay[date];
+    rows.sort(function(a,b){ return parseHour(a.inicio).localeCompare(parseHour(b.inicio)); });
+    var totalDesp = rows.filter(function(r){return r.estado==='asignado';}).length;
+    var totalPend = rows.filter(function(r){return r.estado==='active';}).length;
+    var totalH    = rows.reduce(function(a,r){return a+calcHours(r.inicio,r.fin);},0);
+    var dLabel    = new Date(date+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'});
+    dLabel = dLabel.charAt(0).toUpperCase()+dLabel.slice(1);
+
+    return '<div class="consol-day">'+
+      '<div class="consol-day-header">'+
+        '<span class="consol-date">'+dLabel+'</span>'+
+        '<span class="consol-stats">'+
+          '<span class="consol-badge-pend">'+totalPend+' pendiente(s)</span>'+
+          '<span class="consol-badge-desp">'+totalDesp+' despachado(s)</span>'+
+          '<span class="consol-total-h">'+totalH+'h total</span>'+
+        '</span>'+
+      '</div>'+
+      '<div class="consol-blocks">'+
+        rows.map(function(r) {
+          var h        = calcHours(r.inicio, r.fin);
+          var overnight= parseDate(r.fin) !== parseDate(r.inicio);
+          var driver   = driverCache.find(function(d){return d.doc===r.doc&&d.plate===r.plate;});
+          var name     = driver ? driver.name : r.doc;
+          var isDesp   = r.estado === 'asignado';
+          return '<div class="consol-block'+(isDesp?' desp':'')+'">'+
+            '<div class="consol-block-time">'+
+              parseHour(r.inicio)+'<br><span>-></span><br>'+parseHour(r.fin)+(overnight?'<span class="nd-tag">+1</span>':'')+
+            '</div>'+
+            '<div class="consol-block-info">'+
+              '<div class="consol-driver-name">'+name+(isDesp?'<span class="desp-tag">Despachado</span>':'')+'</div>'+
+              '<div class="consol-block-meta">'+
+                '<span class="plate-badge'+(isDesp?' plate-desp':'')+'">'+r.plate+'</span>'+
+                (r.locality?'<span class="loc-tag">[Loc] '+r.locality+'</span>':'')+
+                '<span class="sched-dur">'+h+'h</span>'+
+              '</div>'+
+            '</div>'+
+            '<div class="consol-block-action">'+
+              (isDesp
+                ? '<span class="desp-lock">Bloqueado</span>'
+                : '<button class="btn-desp" onclick="asignarTurno('+r.sheetRow+')">Despachar</button>'
+              )+
+            '</div>'+
+          '</div>';
+        }).join('')+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  document.getElementById('consolidadoCard').style.display = 'block';
+}
+
+function switchAdminTab(tab, btn) {
+  document.querySelectorAll('#page-admin .tab-btn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  document.getElementById('adminTabConductores').style.display  = tab==='conductores'?'block':'none';
+  document.getElementById('adminTabConsolidado').style.display  = tab==='consolidado'?'block':'none';
+  document.getElementById('adminTabSheet').style.display        = 'none';
+  if (tab==='consolidado') showConsolidado();
+}
+
+function showSheetView() {
+  const rows=allTurnos.filter(r=>r.estado==='active').sort((a,b)=>a.inicio.localeCompare(b.inicio));
+  document.getElementById('sheetViewWrap').innerHTML=`
+    <div class="raw-table-wrap">
+      <table class="raw-table">
+        <thead><tr><th>ID</th><th>Documento</th><th>Placa</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>FechaCreacion</th><th>Localidad</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td class="mono small">${r.id}</td><td>${r.doc}</td>
+          <td><span class="plate-badge">${r.plate}</span></td>
+          <td>${r.inicio}</td><td>${r.fin}</td>
+          <td><span class="estado-badge estado-${r.estado}">${r.estado}</span></td>
+          <td class="mono small">${r.fechaCreacion}</td>
+          <td>${r.locality?`<span class="loc-tag">[Loc] ${r.locality}</span>`:'--'}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  document.getElementById('sheetViewCard').style.display='block';
+}
+
+function exportCSV() {
+  if (!allTurnos.length) { showToast('Carga los datos primero.','warning'); return; }
+  const hdrs=['ID','Documento','Placa','Inicio','Fin','Estado','MotivoCancelacion','FechaCreacion','FechaCancelacion','Localidad','Notas'];
+  let csv=hdrs.join(',')+'\n';
+  allTurnos.forEach(r=>{csv+=`"${r.id}","${r.doc}","${r.plate}","${r.inicio}","${r.fin}","${r.estado}","${r.motivoCan}","${r.fechaCreacion}","${r.fechaCan}","${r.locality}","${r.notes}"\n`;});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download=`specialcar_${ds(new Date())}.csv`; a.click();
+  showToast('[OK] CSV exportado.','success');
+}
+
+async function syncNow() {
+  showLoading('Actualizando...');
+  try { await loadMyTurnos(); lastSync=new Date(); updateSyncUI(); showToast('[OK] Datos actualizados.','success'); }
+  catch(e) { showToast('[Error] '+e.message,'error'); }
+  hideLoading();
+}
+function updateSyncUI() {
+  const t=lastSync?lastSync.toLocaleTimeString('es-CO'):null;
+  const b=document.getElementById('dashSyncBadge'), s=document.getElementById('dashSyncTime');
+  if(b){b.textContent=t?`v ${t}`:'Pendiente';b.className=`sync-badge ${t?'ok':'pending'}`;}
+  if(s) s.textContent=t?`Última actualización: ${t}`:'Sin sincronizar';
+}
+
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('.modal-overlay').forEach(o=>{o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');});});
+});
+function showLoading(msg){document.getElementById('loadingText').textContent=msg||'Cargando...';document.getElementById('loadingOverlay').classList.add('show');}
+function hideLoading(){document.getElementById('loadingOverlay').classList.remove('show');}
+function showToast(msg,type='success'){
+  const w=document.getElementById('toastWrap'),t=document.createElement('div');
+  t.className=`toast ${type}`;t.textContent=msg;w.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(70px)';t.style.transition='all .3s';setTimeout(()=>t.remove(),300);},3500);
+}
+
+</script>
+</body>
+</html>
