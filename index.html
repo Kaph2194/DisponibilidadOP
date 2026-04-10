@@ -613,9 +613,9 @@ body{font-family:'Inter',sans-serif;background:var(--off-white);color:var(--text
         <div class="form-field"><label>Tipo</label>
           <select id="pVType">
             <option value="">Seleccionar...</option>
-            <option value="bus">Bus</option><option value="buselec">Bus Eléctrico</option>
-            <option value="micro">Microbús</option><option value="van">Van</option>
-            <option value="camion">Camión</option><option value="Automovil">Automóvil</option><option value="otro">Otro</option>
+            <option value="bus">Camioneta</option><option value="buselec">Eléctrico</option>
+            <option value="micro">Campero</option><option value="van">Vans</option>
+            <option value="Automovil">Automóvil</option><option value="otro">Microbus</option>
           </select>
         </div>
       </div>
@@ -1937,7 +1937,7 @@ function filterDrivers() {
 }
 function renderAdminTable(drivers) {
   var now=new Date(), mp=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  var VN={bus:'Bus',buselec:'Bus Elec.',micro:'Microbus',van:'Van',camion:'Camion',taxi:'Taxi',otro:'Otro','':'--'};
+  var VN={bus:'Camioneta',buselec:'Electrico',micro:'Campero',van:'Vans',camion:'Automovil',taxi:'Microbus'};
   var tbody = document.getElementById('adminTableBody');
   if (!drivers.length) { tbody.innerHTML='<tr><td colspan="6" class="empty-td">Sin resultados.</td></tr>'; return; }
   tbody.innerHTML = drivers.map(function(d){
