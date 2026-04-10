@@ -13,7 +13,7 @@ const LOCALIDADES = [
   'Tunjuelito','Bosa','Kennedy','Fontibón','Engativá',
   'Suba','Barrios Unidos','Teusaquillo','Los Mártires',
   'Antonio Nariño','Puente Aranda','La Candelaria',
-  'Rafael Uribe Uribe','Ciudad Bolívar','Sumapaz'
+  'Rafael Uribe Uribe','Ciudad Bolívar','Soacha'
 ];
 
 const HOURS = Array.from({length:24},(_,i)=>`${String(i).padStart(2,'0')}:00`);
@@ -1112,7 +1112,7 @@ function filterDrivers() {
 }
 function renderAdminTable(drivers) {
   var now=new Date(), mp=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-  var VN={bus:'Bus',buselec:'Bus Elec.',micro:'Microbus',van:'Van',camion:'Camion',taxi:'Taxi',otro:'Otro','':'--'};
+  var VN={bus:'Camioneta',buselec:'Electrico',micro:'Campero',van:'Vans',camion:'Automovil',taxi:'Microbus'};
   var tbody = document.getElementById('adminTableBody');
   if (!drivers.length) { tbody.innerHTML='<tr><td colspan="6" class="empty-td">Sin resultados.</td></tr>'; return; }
   tbody.innerHTML = drivers.map(function(d){
