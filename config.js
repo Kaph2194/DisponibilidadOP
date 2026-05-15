@@ -5,7 +5,7 @@
 
 const SHEETS_CONFIG = {
   // URL del Google Apps Script desplegado como Web App
-  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwERh4qh1rC2pq5By8N7jSRBMT7UQj-5Ny_1A3zo2k9SC6GdueuQ0KdYwVorbT6DsI/exec",
+  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwyoAq4MInKB9HCynHTHhHOL3DYsTa2zrivX5oZny3Hh3Og5dpmUzOHTWdhWVSdv6Q/exec",
 
   // PIN del administrador (placa: ADMIN)
   ADMIN_PIN: "admin123"
