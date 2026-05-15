@@ -210,11 +210,11 @@ function canEditRow(r) {
 function myActive() { return allTurnos.filter(r => r.doc===currentDriver.doc && r.plate===currentDriver.plate && (r.estado==='active'||r.estado==='asignado')); }
 function myAll()    { return allTurnos.filter(r => r.doc===currentDriver.doc && r.plate===currentDriver.plate); }
 
-// -- JSONP API -- con diagnóstico detallado ----------
-let _cbN = 0;
+// -- API via fetch+CORS (compatible con móviles y PC) ----------
+// Reemplaza JSONP que fallaba en navegadores móviles modernos
 
-function apiJsonp(params) {
-  return new Promise((resolve, reject) => {
+function apiFetch(params) {
+  return new Promise(function(resolve, reject) {
     if (!SCRIPT_URL || SCRIPT_URL.startsWith('PEGA')) {
       return reject(new Error('[Config] Config incompleta: pega la URL del Apps Script en config.js'));
     }
@@ -222,74 +222,70 @@ function apiJsonp(params) {
       return reject(new Error('[Aviso] La URL no parece ser de Google Apps Script. Debe contener "script.google.com"'));
     }
 
-    const cbName = '__sc_' + (++_cbN);
-    const TIMEOUT_MS = 20000;
+    var TIMEOUT_MS = 25000;
 
-    const tid = setTimeout(() => {
-      cleanup();
-      reject(new Error(
-        '[Timeout] Tiempo de espera agotado (20s).\n' +
-        'Posibles causas:\n' +
-        '- El script no está desplegado como Web App\n' +
-        '- El acceso no es "Cualquier persona"\n' +
-        '- La URL es de una implementación antigua -- crea una NUEVA implementación'
-      ));
-    }, TIMEOUT_MS);
-
-    function cleanup() {
-      delete window[cbName];
-      const el = document.getElementById(cbName);
-      if (el) el.remove();
-      clearTimeout(tid);
-    }
-
-    window[cbName] = function(data) {
-      cleanup();
-      if (!data) return reject(new Error('El script respondió vacío'));
-      if (!data.ok) return reject(new Error(data.error || 'El script respondió con error desconocido'));
-      resolve(data);
-    };
-
-    const allParams = { ...params, callback: cbName };
-    const qs = new URLSearchParams(
+    var qs = new URLSearchParams(
       Object.fromEntries(
-        Object.entries(allParams).map(([k,v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])
+        Object.entries(params).map(function(e) {
+          return [e[0], typeof e[1] === 'object' ? JSON.stringify(e[1]) : String(e[1])];
+        })
       )
     ).toString();
 
-    const script = document.createElement('script');
-    script.id    = cbName;
-    script.src   = `${SCRIPT_URL}?${qs}`;
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var tid = setTimeout(function() {
+      if (controller) controller.abort();
+      reject(new Error(
+        '[Timeout] Tiempo de espera agotado (25s).\n' +
+        'Posibles causas:\n' +
+        '- El script no está desplegado como Web App\n' +
+        '- El acceso no es "Cualquier persona"\n' +
+        '- La URL es de una implementación antigua — crea una NUEVA implementación'
+      ));
+    }, TIMEOUT_MS);
 
-    script.onerror = function() {
-      cleanup();
-      // Intenta dar una causa más específica
-      if (SCRIPT_URL.endsWith('/exec')) {
-        reject(new Error(
-          '[Error] El script rechazó la conexión.\n' +
-          'Pasos para resolver:\n' +
-          '1. Abre tu Apps Script\n' +
-          '2. Implementar -> Nueva implementación\n' +
-          '3. Tipo: Aplicación web\n' +
-          '4. Ejecutar como: Yo\n' +
-          '5. Acceso: Cualquier persona\n' +
-          '6. Copia la NUEVA URL y actualiza config.js'
-        ));
-      } else {
-        reject(new Error('[Error] URL inválida. La URL debe terminar en "/exec"'));
-      }
+    var fetchOptions = {
+      method: 'GET',
+      mode: 'cors',
+      redirect: 'follow'
     };
+    if (controller) fetchOptions.signal = controller.signal;
 
-    document.head.appendChild(script);
+    fetch(SCRIPT_URL + '?' + qs, fetchOptions)
+      .then(function(res) {
+        clearTimeout(tid);
+        if (!res.ok) throw new Error('[HTTP ' + res.status + '] El servidor respondió con error.');
+        return res.json();
+      })
+      .then(function(data) {
+        if (!data) return reject(new Error('El script respondió vacío'));
+        if (!data.ok) return reject(new Error(data.error || 'El script respondió con error desconocido'));
+        resolve(data);
+      })
+      .catch(function(err) {
+        clearTimeout(tid);
+        if (err.name === 'AbortError') return; // ya manejado por timeout
+        // CORS bloqueado o sin conexión
+        if (err.message && err.message.toLowerCase().includes('failed to fetch')) {
+          reject(new Error(
+            '[Error de red] No se pudo conectar al script.\n' +
+            'Verifica:\n' +
+            '1. El script está desplegado como Web App\n' +
+            '2. Acceso: "Cualquier persona" (sin autenticación)\n' +
+            '3. Tienes conexión a internet'
+          ));
+        } else {
+          reject(new Error('[Error] ' + err.message));
+        }
+      });
   });
 }
 
-async function api(p) { return apiJsonp(p); }
+async function api(p) { return apiFetch(p); }
 
 // -- Test de conexión manual (para diagnóstico) ----─
 async function testConnection() {
   const urlInput = document.getElementById('diagUrl');
-  const statusEl = document.getElementById('diagStatus');
   const url = urlInput ? urlInput.value.trim() : SCRIPT_URL;
 
   if (!url || url.startsWith('PEGA')) {
@@ -299,34 +295,18 @@ async function testConnection() {
 
   showDiagStatus('loading', '[Sync] Probando conexión con el script...');
 
-  const cbName = '__sc_test_' + Date.now();
-  const timeout = setTimeout(() => {
-    delete window[cbName];
-    const s = document.getElementById(cbName); if(s) s.remove();
-    showDiagStatus('error', '[Timeout] Sin respuesta en 15 segundos. El script no está activo o la URL es incorrecta.');
-  }, 15000);
-
-  window[cbName] = function(data) {
-    clearTimeout(timeout);
-    delete window[cbName];
-    const s = document.getElementById(cbName); if(s) s.remove();
+  try {
+    const res = await fetch(url + '?action=ping', { method: 'GET', mode: 'cors', redirect: 'follow' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
     if (data && data.ok) {
-      showDiagStatus('ok', `[OK] Conexión exitosa. El script responde correctamente.\n\nAcción probada: "ping"\nRespuesta: ${JSON.stringify(data)}`);
+      showDiagStatus('ok', '[OK] Conexión exitosa. El script responde correctamente.\n\nAcción probada: "ping"\nRespuesta: ' + JSON.stringify(data));
     } else {
-      showDiagStatus('error', `[Aviso] El script respondió pero con error: ${data?.error || JSON.stringify(data)}`);
+      showDiagStatus('error', '[Aviso] El script respondió pero con error: ' + (data && data.error ? data.error : JSON.stringify(data)));
     }
-  };
-
-  const script = document.createElement('script');
-  script.id  = cbName;
-  script.src = `${url}?action=ping&callback=${cbName}`;
-  script.onerror = function() {
-    clearTimeout(timeout);
-    delete window[cbName];
-    script.remove();
-    showDiagStatus('error', '[Error] No se pudo cargar el script. Verifica:\n- La URL es correcta\n- El despliegue existe y es público\n- El script no tiene errores de sintaxis');
-  };
-  document.head.appendChild(script);
+  } catch(err) {
+    showDiagStatus('error', '[Error] No se pudo conectar: ' + err.message + '\n\nVerifica:\n- La URL es correcta\n- El despliegue es público (Cualquier persona)\n- Tienes conexión a internet');
+  }
 }
 
 function showDiagStatus(type, msg) {
