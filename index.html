@@ -352,7 +352,7 @@ body{font-family:'Inter',sans-serif;background:var(--off-white);color:var(--text
 
 <!-- SPLASH -->
 <div id="splashScreen">
-  <img src="/assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">   <div class="splash-txt">Cargando sistema...</div>
+  <img src="assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">   <div class="splash-txt">Cargando sistema...</div>
   <div class="splash-spin"></div>
 </div>
 
@@ -362,7 +362,7 @@ body{font-family:'Inter',sans-serif;background:var(--off-white);color:var(--text
   <div class="login-wrap">
     <div class="login-card">
       <div class="login-logo-wrap">
-        <img src="/assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">       
+        <img src="assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">       
       </div>
       <div class="login-title">Bienvenido</div>
       <div class="login-sub">Ingresa tu placa y número de documento</div>
@@ -389,7 +389,7 @@ body{font-family:'Inter',sans-serif;background:var(--off-white);color:var(--text
 <!-- SIDEBAR -->
 <aside class="sidebar">
   <div class="sidebar-header">
-    <img src="/assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">     
+    <img src="assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">     
     <div class="sb-brand"><div class="sb-brand-main">Disponibilidad Operacion</div><div class="sb-brand-sub">Special CAR</div></div>
   </div>
   <nav class="sidebar-nav">
@@ -1081,6 +1081,7 @@ async function api(p) {
   try {
     const res = await fetch(SCRIPT_URL + '?' + qs, {
       method: 'GET',
+      mode: 'cors',
       redirect: 'follow',
       signal: controller ? controller.signal : undefined
     });
@@ -1843,7 +1844,11 @@ async function loadDashboard() {
     } else {
       await loadMyTurnos();
     }
-  } catch(e) {}
+  } catch(e) {
+    hideLoading();
+    showToast('Error cargando datos: ' + e.message, 'error');
+    return;
+  }
   hideLoading();
 
   var now = new Date();
