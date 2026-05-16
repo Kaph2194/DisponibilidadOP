@@ -337,14 +337,36 @@ body{font-family:'Inter',sans-serif;background:var(--off-white);color:var(--text
 ::-webkit-scrollbar-thumb{background:var(--grey-light);border-radius:3px;}
 ::-webkit-scrollbar-thumb:hover{background:var(--grey-mid);}
 
+/* ── MOBILE BOTTOM NAV ── */
+.mobile-nav{display:none;}
 @media(max-width:768px){
-  .app-layout{grid-template-columns:1fr;}
-  .sidebar{position:fixed;bottom:0;left:0;right:0;height:auto;flex-direction:row;z-index:100;}
-  .sidebar-nav,.sb-driver{display:none;}
-  .main-content{padding:12px 10px 68px;}
-  .grid-3,.grid-2{grid-template-columns:1fr;}
-  .form-row{grid-template-columns:1fr;}
-  .hour-grid{grid-template-columns:repeat(4,1fr);}
+  .mobile-nav{
+    display:flex !important;
+    position:fixed;bottom:0;left:0;right:0;
+    background:linear-gradient(180deg,var(--blue-dark),var(--blue-deep));
+    border-top:1px solid rgba(255,255,255,.12);
+    z-index:200;height:58px;
+    align-items:stretch;
+  }
+  .mob-nav-item{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:3px;cursor:pointer;color:rgba(255,255,255,.5);font-size:9px;font-weight:600;
+    letter-spacing:.3px;text-transform:uppercase;transition:all .15s;padding:6px 2px;
+    border:none;background:none;
+  }
+  .mob-nav-item.active,.mob-nav-item:active{color:var(--white);}
+  .mob-nav-item .mob-icon{font-size:18px;line-height:1;}
+  .app-layout{grid-template-columns:1fr !important;width:100% !important;}
+  .sidebar{position:fixed !important;bottom:0 !important;top:auto !important;left:0 !important;right:0 !important;width:100% !important;height:56px !important;min-height:56px !important;flex-direction:row !important;z-index:100 !important;overflow:hidden !important;}
+  .sidebar-header{display:none !important;}
+  .sidebar-nav,.sb-driver{display:none !important;}
+  .sidebar-bottom{display:none !important;}
+  .main-content{padding:12px 10px 70px !important;width:100% !important;max-width:100% !important;box-sizing:border-box !important;}
+  .grid-3,.grid-2{grid-template-columns:1fr !important;}
+  .form-row{grid-template-columns:1fr !important;}
+  .hour-grid{grid-template-columns:repeat(4,1fr) !important;}
+  .page{width:100% !important;max-width:100% !important;box-sizing:border-box !important;}
+  body,html{overflow-x:hidden !important;}
 }
 </style>
 </head>
@@ -388,6 +410,15 @@ body{font-family:'Inter',sans-serif;background:var(--off-white);color:var(--text
 
 <!-- SIDEBAR -->
 <aside class="sidebar">
+  <!-- MOBILE BOTTOM NAV -->
+  <nav class="mobile-nav" id="mobileNav">
+    <button class="mob-nav-item active" id="mnDash"    onclick="showPage('dashboard',this);setMobNav('mnDash')">   <span class="mob-icon">📊</span>Inicio</button>
+    <button class="mob-nav-item"        id="mnTurnos"  onclick="showPage('schedule',this);setMobNav('mnTurnos')"  style="display:none"><span class="mob-icon">📋</span>Turnos</button>
+    <button class="mob-nav-item"        id="mnAgregar" onclick="showPage('add-schedule',this);setMobNav('mnAgregar')" style="display:none"><span class="mob-icon">➕</span>Agregar</button>
+    <button class="mob-nav-item"        id="mnMensual" onclick="showPage('monthly-view',this);setMobNav('mnMensual')" style="display:none"><span class="mob-icon">🗓</span>Mes</button>
+    <button class="mob-nav-item"        id="mnPerfil"  onclick="showPage('profile',this);setMobNav('mnPerfil')"   style="display:none"><span class="mob-icon">👤</span>Perfil</button>
+    <button class="mob-nav-item"        id="mnAdmin"   onclick="showPage('admin',this);setMobNav('mnAdmin')"     style="display:none"><span class="mob-icon">⚙️</span>Admin</button>
+  </nav>
   <div class="sidebar-header">
     <img src="assets/specialcar.png" style="width:52px;height:52px;object-fit:contain;border-radius:8px">     
     <div class="sb-brand"><div class="sb-brand-main">Disponibilidad Operacion</div><div class="sb-brand-sub">Special CAR</div></div>
@@ -1209,10 +1240,31 @@ function finishLogin() {
 
   document.getElementById('addDate').value = ds(new Date());
   fillLocalities(); loadDashboard(); loadProfileData();
+  syncMobileNav();
   if (currentDriver.isAdmin) {
     setTimeout(function(){ showPage('admin', document.querySelector('#adminNav .nav-item')); }, 150);
   }
 }
+function setMobNav(activeId) {
+  document.querySelectorAll('.mob-nav-item').forEach(b => b.classList.remove('active'));
+  var el = document.getElementById(activeId);
+  if (el) el.classList.add('active');
+}
+
+function syncMobileNav() {
+  var isAdmin = currentDriver && currentDriver.isAdmin;
+  var ids = ['mnTurnos','mnAgregar','mnMensual','mnPerfil'];
+  ids.forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.style.display = isAdmin ? 'none' : '';
+  });
+  var adminEl = document.getElementById('mnAdmin');
+  if (adminEl) adminEl.style.display = isAdmin ? '' : 'none';
+  // Hide mobile nav on login screen
+  var mn = document.getElementById('mobileNav');
+  if (mn) mn.style.display = (currentDriver) ? '' : 'none';
+}
+
 function fillLocalities() {
   ['addLocSelect','editLocSelect','weekLocSelect','monthLocSelect','pLocality'].forEach(id => {
     const el = document.getElementById(id); if (!el) return;
@@ -1224,6 +1276,7 @@ function doLogout() {
   currentDriver=null; lastSync=null; allTurnos=[];
   document.getElementById('appScreen').style.display='none';
   document.getElementById('loginScreen').style.display='block';
+  var mn=document.getElementById('mobileNav'); if(mn) mn.style.display='none';
   document.getElementById('loginPlate').value=''; document.getElementById('loginPin').value='';
   document.getElementById('adminNav').style.display='none';
   showPage('dashboard', document.querySelector('.nav-item'));
