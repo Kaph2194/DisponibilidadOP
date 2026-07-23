@@ -5,7 +5,7 @@
 var SCRIPT_URL = (typeof SHEETS_CONFIG !== 'undefined' && SHEETS_CONFIG.SCRIPT_URL)
   ? SHEETS_CONFIG.SCRIPT_URL : '';
 var ADMIN_PIN = (typeof SHEETS_CONFIG !== 'undefined' && SHEETS_CONFIG.ADMIN_PIN)
-  ? SHEETS_CONFIG.ADMIN_PIN : 'admin123';
+  ? SHEETS_CONFIG.ADMIN_PIN : 'Specialcar2026';
 
 
 const LOCALIDADES = [
