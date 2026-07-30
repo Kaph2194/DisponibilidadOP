@@ -1,0 +1,751 @@
+// ── FleetSync v2.1 · app.js ───────────────────────────────────
+// Lógica de interfaz. Los datos vienen de Api (js/api.js).
+
+const HOURS = Array.from({length:24},(_,i)=>String(i).padStart(2,'0')+':00');
+const DIAS  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+let ME = null;                 // { session, profile, conductor }
+let loginMode = 'driver';
+
+// selección de horas
+let nd = { start:null, end:null, dias:new Set() };   // conductor
+let ac = { start:null, end:null };                    // analista
+// contexto de modales
+let ctxAsignar=null, ctxCancelar=null, ctxConductorEdit=null, ctxVehiculoEdit=null, ctxVincularVeh=null;
+// mapas / charts
+let mapUbic=null, markUbic=null, mapHeat=null, heatLayer=null, zoneMarkers=[];
+let chFranjas=null, chZonas=null;
+let heatMode='disp', lastReporte=null;
+// caches
+let cacheConductores=[], cacheVehiculos=[], cacheVinculos=[], misVehs=[];
+
+// ══════════ Helpers ══════════
+const $ = id => document.getElementById(id);
+const hoyISO = () => new Date().toISOString().slice(0,10);
+
+function toast(msg, isErr){
+  const t=$('toast'); t.textContent=msg; t.className=isErr?'err':''; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 4200);
+}
+function fmtFecha(iso){
+  const d=new Date(iso);
+  return DIAS[d.getDay()]+' '+d.getDate()+'/'+String(d.getMonth()+1).padStart(2,'0');
+}
+function fmtHora(iso){
+  const d=new Date(iso);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function fmtRango(r){ return fmtFecha(r.inicio)+' · '+fmtHora(r.inicio)+' → '+fmtHora(r.fin); }
+function horasEntre(a,b){ return Math.round((new Date(b)-new Date(a))/36e5*10)/10; }
+function estadoBadge(r){
+  if (r.asignacion_id) return '<span class="badge b-asignada">Asignada</span>';
+  const m={pendiente:'b-pendiente',validada:'b-validada',rechazada:'b-rechazada',cancelada:'b-cancelada'};
+  return `<span class="badge ${m[r.estado]||'b-pendiente'}">${r.estado}</span>`;
+}
+function tsLocal(fecha, hhmm){ return new Date(fecha+'T'+hhmm+':00').toISOString(); }
+function rangoDia(fecha){
+  const a=new Date(fecha+'T00:00:00');
+  return [a.toISOString(), new Date(a.getTime()+864e5).toISOString()];
+}
+const puedeGestionarFlota = () => ['coordinador','jefe'].includes(ME.profile.role);
+const puedeGestionarPersonas = () => ['coordinador','jefe','analista'].includes(ME.profile.role);
+
+// ══════════ Navegación por rol ══════════
+const NAV = {
+  conductor: [
+    ['p-c-inicio','🏠','Inicio'],
+    ['p-c-nueva','➕','Disponibilidad'],
+    ['p-c-turnos','📋','Mis turnos'],
+    ['p-c-ubic','📍','Ubicación'],
+    ['p-c-perfil','👤','Perfil']
+  ],
+  analista: [
+    ['p-a-validar','✅','Validación'],
+    ['p-a-crear','➕','Crear disponibilidad'],
+    ['p-s-flota','🚗','Flota']
+  ],
+  coordinador: [
+    ['p-o-programar','🗓','Programación'],
+    ['p-a-validar','✅','Validación'],
+    ['p-s-flota','🚗','Flota']
+  ],
+  jefe: [
+    ['p-j-reportes','📊','Reportería'],
+    ['p-o-programar','🗓','Programación'],
+    ['p-s-flota','🚗','Flota'],
+    ['p-j-equipo','👥','Equipo']
+  ]
+};
+
+const PAGE_LOADERS = {
+  'p-c-inicio':  () => UI.loadConductorData(),
+  'p-c-turnos':  () => UI.loadConductorData(),
+  'p-c-ubic':    () => UI.initMiUbicacion(),
+  'p-a-validar': () => UI.loadValidacion(),
+  'p-a-crear':   () => UI.loadCrearAnalista(),
+  'p-s-flota':   () => UI.loadFlota(),
+  'p-o-programar': () => UI.loadProgramacion(),
+  'p-j-reportes':  () => UI.loadReportes(),
+  'p-j-equipo':    () => UI.loadEquipo()
+};
+
+function buildNav(role){
+  const items = NAV[role]||[];
+  $('sideNav').innerHTML = items.map(([id,ic,lbl],i)=>
+    `<button class="nav-item ${i===0?'on':''}" data-p="${id}" onclick="UI.go('${id}',this)"><span class="ic">${ic}</span> ${lbl}</button>`).join('');
+  $('mobNav').innerHTML = items.map(([id,ic,lbl],i)=>
+    `<button class="${i===0?'on':''}" data-p="${id}" onclick="UI.go('${id}',this)"><span class="ic">${ic}</span>${lbl}</button>`).join('');
+}
+
+// ══════════ UI ══════════
+const UI = {
+
+  // ── Login / sesión ──
+  loginTab(mode){
+    loginMode=mode;
+    $('tabDriver').classList.toggle('on', mode==='driver');
+    $('tabStaff').classList.toggle('on', mode==='staff');
+    $('formDriver').style.display = mode==='driver'?'':'none';
+    $('formStaff').style.display  = mode==='staff'?'':'none';
+    $('loginErr').style.display='none';
+  },
+
+  async doLogin(){
+    const btn=$('btnLogin'), err=$('loginErr');
+    err.style.display='none';
+    btn.disabled=true; btn.innerHTML='<span class="spin"></span>Entrando…';
+    let r;
+    if (loginMode==='driver'){
+      const plate=$('lgPlate').value.trim(), doc=$('lgDoc').value.trim();
+      r = (!plate||!doc) ? {ok:false,error:'Ingresa placa y documento.'} : await Api.loginConductor(plate,doc);
+    } else {
+      const em=$('lgEmail').value.trim(), pw=$('lgPass').value;
+      r = (!em||!pw) ? {ok:false,error:'Ingresa email y contraseña.'} : await Api.loginStaff(em,pw);
+    }
+    btn.disabled=false; btn.textContent='Entrar';
+    if (!r.ok){ err.textContent=r.error; err.style.display='block'; return; }
+    await UI.enterApp();
+  },
+
+  async logout(){ await Api.logout(); location.reload(); },
+
+  async enterApp(){
+    ME = await Api.getMe();
+    if (!ME){ toast('No se pudo cargar tu perfil', true); return; }
+    const role = ME.profile.role;
+    $('loginScreen').style.display='none';
+    $('appScreen').style.display='block';
+    $('sideName').textContent = ME.conductor?.nombre || ME.profile.full_name || ME.session.user.email;
+    $('sideRole').textContent = ROLE_LABELS[role]||role;
+    $('sidePlaca').innerHTML  = '';
+    buildNav(role);
+
+    const opts = LOCALIDADES.map(l=>`<option>${l}</option>`).join('');
+    ['ndLoc','pfLoc','acLoc','mcLoc','mvLoc','mAsigZona'].forEach(id=>{ if($(id)) $(id).innerHTML=opts; });
+    ['ndFecha','acFecha','prFecha'].forEach(id=>{ if($(id)) $(id).value=hoyISO(); });
+    if ($('rpDesde')){ $('rpDesde').value=hoyISO(); const h=new Date(); h.setDate(h.getDate()+7); $('rpHasta').value=h.toISOString().slice(0,10); }
+    if ($('avDesde')){ $('avDesde').value=hoyISO(); const h=new Date(); h.setDate(h.getDate()+14); $('avHasta').value=h.toISOString().slice(0,10); }
+
+    buildHourRail('ndHoras', nd, ()=>ndResumen());
+    buildHourRail('acHoras', ac, ()=>acResumen());
+    $('ndFecha').addEventListener('change', buildDiasRail);
+    buildDiasRail();
+
+    // Conductor: cargar sus vehículos y perfil
+    if (role==='conductor' && ME.conductor){
+      misVehs = await Api.misVehiculos(ME.conductor.id);
+      const vopts = misVehs.map(v=>`<option value="${v.vehiculo_id}">${v.placa}${v.tipo_vehiculo?' · '+v.tipo_vehiculo:''}${v.numero_interno?' · '+v.numero_interno:''}</option>`).join('');
+      $('ndVehiculo').innerHTML = vopts || '<option value="">— Sin vehículos vinculados —</option>';
+      $('ubVehiculo').innerHTML = vopts || '<option value="">— Sin vehículos vinculados —</option>';
+      if (misVehs.length===1) $('sidePlaca').innerHTML = `<span class="placa sm">${misVehs[0].placa}</span>`;
+      $('pfNombre').value=ME.conductor.nombre||''; $('pfTel').value=ME.conductor.telefono||'';
+      $('pfLoc').value=ME.conductor.localidad||LOCALIDADES[0];
+    }
+
+    UI.go(NAV[role][0][0], null);
+  },
+
+  go(pageId, btn){
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+    $(pageId).classList.add('on');
+    document.querySelectorAll('[data-p]').forEach(b=>b.classList.toggle('on', b.dataset.p===pageId));
+    (PAGE_LOADERS[pageId]||(()=>{}))();
+    window.scrollTo({top:0});
+  },
+
+  cerrarModal(id){ $(id).classList.remove('on'); },
+
+  // ══════════ CONDUCTOR ══════════
+  async loadConductorData(){
+    if (!ME.conductor){ toast('Tu usuario no está vinculado a un conductor', true); return; }
+    const turnos = await Api.misDisponibilidades(ME.conductor.id);
+    $('cHola').textContent = 'Hola, '+(ME.conductor.nombre.split(' ')[0]||'');
+
+    const ahora=new Date(), mes=ahora.getMonth(), anio=ahora.getFullYear();
+    const activos = turnos.filter(t=>t.estado!=='cancelada' && t.estado!=='rechazada');
+    const delMes  = activos.filter(t=>{ const d=new Date(t.inicio); return d.getMonth()===mes && d.getFullYear()===anio; });
+    const prox    = activos.filter(t=>new Date(t.inicio)>ahora).sort((a,b)=>new Date(a.inicio)-new Date(b.inicio));
+
+    $('cKpiMes').textContent = delMes.length;
+    $('cKpiHoras').textContent = Math.round(delMes.reduce((s,t)=>s+horasEntre(t.inicio,t.fin),0))+' h';
+    $('cKpiProx').textContent = prox.length ? fmtFecha(prox[0].inicio) : '—';
+
+    $('cProximos').innerHTML = prox.length ? prox.slice(0,6).map(t=>`
+      <div class="item"><div class="info">
+        <div class="t1"><span class="placa sm">${t.placa}</span> &nbsp;${fmtRango(t)}</div>
+        <div class="t2">${t.localidad||'Sin localidad'}${t.asignacion_id?` · Servicio: ${t.servicio||'—'} (${t.zona||''})`:''}</div>
+      </div>${estadoBadge(t)}</div>`).join('')
+      : '<div class="empty">No tienes turnos próximos. Sube tu disponibilidad para que te programen.</div>';
+
+    $('cTurnosList').innerHTML = turnos.length ? turnos.map(t=>{
+      const puedeCancelar = t.estado!=='cancelada' && t.estado!=='rechazada' && new Date(t.inicio)>new Date();
+      return `<div class="item"><div class="info">
+        <div class="t1"><span class="placa sm">${t.placa}</span> &nbsp;${fmtRango(t)} <span style="color:var(--faint)">· ${horasEntre(t.inicio,t.fin)} h</span></div>
+        <div class="t2">${t.localidad||''}${t.notas?' · '+t.notas:''}${t.estado==='cancelada'&&t.motivo_cancelacion?' · Motivo: '+t.motivo_cancelacion:''}</div>
+      </div>
+      <div class="acts">${estadoBadge(t)}
+        ${puedeCancelar?`<button class="btn btn-red-o sm" onclick="UI.abrirCancelar('${t.id}','${t.placa} · ${fmtRango(t)}')">Cancelar</button>`:''}
+      </div></div>`;
+    }).join('') : '<div class="empty">Aún no has registrado disponibilidades.</div>';
+  },
+
+  async guardarDisponibilidad(){
+    if (!ME.conductor) return toast('Usuario sin conductor vinculado', true);
+    const vehId=$('ndVehiculo').value;
+    if (!vehId) return toast('No tienes vehículos vinculados. Pide al coordinador que te vincule.', true);
+    if (nd.start===null || nd.end===null) return toast('Selecciona la franja horaria', true);
+    const dias=[...nd.dias]; if(!dias.length) return toast('Selecciona al menos un día', true);
+    if (!$('ndLoc').value) return toast('Selecciona la localidad', true);
+
+    const rows = dias.map(f=>{
+      let finDia=f;
+      if (nd.end<=nd.start){ const d=new Date(f+'T00:00:00'); d.setDate(d.getDate()+1); finDia=d.toISOString().slice(0,10); }
+      return { conductor_id:ME.conductor.id, vehiculo_id:vehId,
+               inicio:tsLocal(f,HOURS[nd.start]), fin:tsLocal(finDia,HOURS[nd.end]),
+               localidad:$('ndLoc').value, notas:$('ndNotas').value.trim() };
+    });
+    const { error } = await Api.crearDisponibilidades(rows);
+    if (error) return toast(Api.friendly(error), true);
+    toast(rows.length+' disponibilidad(es) guardada(s) ✓');
+    nd={start:null,end:null,dias:new Set()}; $('ndNotas').value='';
+    buildHourRail('ndHoras',nd,()=>ndResumen()); buildDiasRail(); ndResumen();
+  },
+
+  abrirCancelar(id, txt){ ctxCancelar=id; $('mCanInfo').textContent=txt; $('mCanMotivo').value=''; $('mCancelar').classList.add('on'); },
+  async confirmarCancelacion(){
+    const { error } = await Api.cancelarDisponibilidad(ctxCancelar, $('mCanMotivo').value.trim());
+    UI.cerrarModal('mCancelar');
+    if (error) return toast(Api.friendly(error), true);
+    toast('Turno cancelado');
+    UI.loadConductorData(); if($('p-a-validar').classList.contains('on')) UI.loadValidacion();
+  },
+
+  // ── Ubicación (conductor) ──
+  async initMiUbicacion(){
+    if (!mapUbic){
+      mapUbic = L.map('mapaMiUbic').setView([4.65,-74.1], 11);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        {attribution:'© OpenStreetMap · © CARTO', maxZoom:19}).addTo(mapUbic);
+    }
+    setTimeout(()=>mapUbic.invalidateSize(), 150);
+    const u = await Api.miUltimaUbicacion(ME.conductor.id);
+    if (u){
+      UI._pintarMiUbic(u.lat,u.lng);
+      $('ubicUltima').textContent = 'Última reportada: '+new Date(u.reportada_at).toLocaleString('es-CO');
+    } else $('ubicUltima').textContent='Aún no has reportado ubicación.';
+  },
+  _pintarMiUbic(lat,lng){
+    if (markUbic) markUbic.remove();
+    markUbic = L.circleMarker([lat,lng],{radius:10,color:'#FFB020',fillColor:'#FFB020',fillOpacity:.85}).addTo(mapUbic);
+    mapUbic.setView([lat,lng], 14);
+  },
+  reportarUbicacion(){
+    const st=$('ubicStatus');
+    const vehId=$('ubVehiculo').value;
+    if (!vehId) return toast('No tienes vehículos vinculados.', true);
+    if (!navigator.geolocation){ st.textContent='Tu navegador no soporta GPS.'; return; }
+    st.innerHTML='<span class="spin"></span>Obteniendo GPS…';
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      const {latitude:lat, longitude:lng, accuracy}=pos.coords;
+      const { error } = await Api.reportarUbicacion(ME.conductor.id, vehId, lat, lng, accuracy);
+      if (error){ st.textContent=''; return toast(Api.friendly(error), true); }
+      st.textContent=''; toast('Ubicación reportada ✓');
+      UI._pintarMiUbic(lat,lng);
+      $('ubicUltima').textContent='Última reportada: '+new Date().toLocaleString('es-CO');
+    }, err=>{ st.textContent=''; toast('No se pudo obtener el GPS: '+err.message, true); },
+    { enableHighAccuracy:true, timeout:12000 });
+  },
+
+  // ── Perfil (conductor) ──
+  async guardarPerfil(){
+    const { error } = await Api.updatePerfilConductor(ME.conductor.id, {
+      nombre:$('pfNombre').value.trim(), telefono:$('pfTel').value.trim(),
+      localidad:$('pfLoc').value
+    });
+    if (error) return toast(Api.friendly(error), true);
+    toast('Perfil actualizado ✓'); ME = await Api.getMe();
+    $('sideName').textContent = ME.conductor?.nombre||'';
+  },
+
+  // ══════════ ANALISTA ══════════
+  async loadValidacion(){
+    const [d1] = rangoDia($('avDesde').value||hoyISO());
+    const [,d2] = rangoDia($('avHasta').value||hoyISO());
+    let rows = await Api.disponibilidadesRango(d1,d2);
+    const filtro = $('avEstado').value;
+    if (filtro) rows = rows.filter(r=>r.estado===filtro);
+    const soyValidador = ['analista','coordinador'].includes(ME.profile.role);
+    $('avList').innerHTML = rows.length ? rows.map(r=>`
+      <div class="item"><div class="info">
+        <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
+        <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''}${r.notas?' · '+r.notas:''}</div>
+      </div>
+      <div class="acts">${estadoBadge(r)}
+        ${soyValidador && r.estado==='pendiente' ? `
+          <button class="btn btn-green sm" onclick="UI.validar('${r.id}','validada')">Validar</button>
+          <button class="btn btn-red-o sm" onclick="UI.validar('${r.id}','rechazada')">Rechazar</button>`:''}
+      </div></div>`).join('')
+      : '<div class="empty">No hay disponibilidades con ese filtro.</div>';
+  },
+
+  async validar(id, estado){
+    const { error } = await Api.cambiarEstadoDisponibilidad(id, estado);
+    if (error) return toast(Api.friendly(error), true);
+    toast(estado==='validada'?'Disponibilidad validada ✓':'Disponibilidad rechazada');
+    UI.loadValidacion();
+  },
+
+  async loadCrearAnalista(){
+    cacheConductores = await Api.listConductores();
+    $('acConductor').innerHTML = cacheConductores.filter(c=>c.activo)
+      .map(c=>`<option value="${c.id}">${c.nombre} — CC ${c.documento}</option>`).join('');
+    await UI.acCargarVehiculos();
+  },
+
+  async acCargarVehiculos(){
+    const cid=$('acConductor').value;
+    if (!cid){ $('acVehiculo').innerHTML=''; return; }
+    const vehs = await Api.misVehiculos(cid);
+    $('acVehiculo').innerHTML = vehs.length
+      ? vehs.map(v=>`<option value="${v.vehiculo_id}">${v.placa}${v.tipo_vehiculo?' · '+v.tipo_vehiculo:''}</option>`).join('')
+      : '<option value="">— Este conductor no tiene vehículos vinculados —</option>';
+  },
+
+  async crearDispAnalista(){
+    if (ac.start===null || ac.end===null) return toast('Selecciona la franja horaria', true);
+    const f=$('acFecha').value; if(!f) return toast('Selecciona la fecha', true);
+    const vehId=$('acVehiculo').value;
+    if (!vehId) return toast('El conductor no tiene vehículos vinculados. Pide al coordinador o jefe que lo vincule.', true);
+    let finDia=f;
+    if (ac.end<=ac.start){ const d=new Date(f+'T00:00:00'); d.setDate(d.getDate()+1); finDia=d.toISOString().slice(0,10); }
+    const { error } = await Api.crearDisponibilidades([{
+      conductor_id: $('acConductor').value, vehiculo_id: vehId,
+      inicio: tsLocal(f,HOURS[ac.start]), fin: tsLocal(finDia,HOURS[ac.end]),
+      localidad: $('acLoc').value, notas: $('acNotas').value.trim(),
+      estado: 'validada'
+    }]);
+    if (error) return toast(Api.friendly(error), true);
+    toast('Disponibilidad creada y validada ✓');
+    ac={start:null,end:null}; buildHourRail('acHoras',ac,()=>acResumen()); acResumen(); $('acNotas').value='';
+  },
+
+  // ══════════ STAFF: Flota (vehículos + conductores + vínculos) ══════════
+  async loadFlota(){
+    [cacheVehiculos, cacheConductores, cacheVinculos] = await Promise.all([
+      Api.listVehiculos(), Api.listConductores(), Api.listVinculos()
+    ]);
+    const gestFlota = puedeGestionarFlota();          // coordinador y jefe
+    const gestPers  = puedeGestionarPersonas();       // + analista
+    $('btnNuevoVeh').style.display  = gestFlota?'':'none';
+    $('btnNuevoCond').style.display = gestPers?'':'none';
+
+    // Vehículos
+    $('tblVehiculos').querySelector('tbody').innerHTML = cacheVehiculos.map(v=>{
+      const links = cacheVinculos.filter(x=>x.vehiculo_id===v.id);
+      const chips = links.map(x=>`<span class="chip">${x.conductor_nombre}${gestFlota?`<button title="Desvincular" onclick="UI.desvincular('${x.id}','${x.conductor_nombre}','${v.placa}')">✕</button>`:''}</span>`).join('') || '<span style="color:var(--faint)">Sin conductores</span>';
+      return `<tr style="${v.activo?'':'opacity:.45'}">
+        <td><span class="placa sm">${v.placa}</span></td>
+        <td>${v.tipo_vehiculo||'—'}</td><td>${v.numero_interno||'—'}</td><td>${v.localidad||'—'}</td>
+        <td>${chips}</td>
+        <td style="white-space:nowrap">${gestFlota?`
+          <button class="btn btn-ghost sm" onclick="UI.abrirVincular('${v.id}','${v.placa}')">＋ Conductor</button>
+          <button class="btn btn-ghost sm" onclick="UI.abrirVehiculoModal('${v.id}')">Editar</button>`:''}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" style="color:var(--faint)">Sin vehículos registrados.</td></tr>';
+
+    // Conductores
+    $('tblConductores').querySelector('tbody').innerHTML = cacheConductores.map(c=>{
+      const vehs = cacheVinculos.filter(x=>x.conductor_id===c.id)
+        .map(x=>`<span class="placa sm" style="margin:2px 3px 2px 0">${x.placa}</span>`).join('') || '<span style="color:var(--faint)">Ninguno</span>';
+      return `<tr style="${c.activo?'':'opacity:.45'}">
+        <td>${c.nombre}</td><td>${c.documento}</td><td>${c.telefono||'—'}</td><td>${c.localidad||'—'}</td>
+        <td>${vehs}</td>
+        <td>${gestPers?`<button class="btn btn-ghost sm" onclick="UI.abrirConductorModal('${c.id}')">Editar</button>`:''}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="6" style="color:var(--faint)">Sin conductores registrados.</td></tr>';
+  },
+
+  // — Modal vehículo —
+  abrirVehiculoModal(id){
+    ctxVehiculoEdit = id||null;
+    const v = id ? cacheVehiculos.find(x=>x.id===id) : null;
+    $('mVehTitle').textContent = v ? 'Editar vehículo' : 'Nuevo vehículo';
+    $('mvPlaca').value=v?.placa||''; $('mvTipo').value=v?.tipo_vehiculo||'';
+    $('mvNum').value=v?.numero_interno||''; $('mvLoc').value=v?.localidad||LOCALIDADES[0];
+    $('mVehiculo').classList.add('on');
+  },
+  async guardarVehiculoModal(){
+    const v = {
+      placa:$('mvPlaca').value.trim().toUpperCase(), tipo_vehiculo:$('mvTipo').value.trim(),
+      numero_interno:$('mvNum').value.trim(), localidad:$('mvLoc').value
+    };
+    if (!v.placa) return toast('La placa es obligatoria', true);
+    if (ctxVehiculoEdit) v.id=ctxVehiculoEdit;
+    const { error } = await Api.saveVehiculo(v);
+    if (error) return toast(Api.friendly(error), true);
+    UI.cerrarModal('mVehiculo'); toast('Vehículo guardado ✓'); UI.loadFlota();
+  },
+
+  // — Modal conductor (persona) —
+  abrirConductorModal(id){
+    ctxConductorEdit = id||null;
+    const c = id ? cacheConductores.find(x=>x.id===id) : null;
+    $('mCondTitle').textContent = c ? 'Editar conductor' : 'Nuevo conductor';
+    $('mcNombre').value=c?.nombre||''; $('mcDoc').value=c?.documento||'';
+    $('mcTel').value=c?.telefono||''; $('mcLoc').value=c?.localidad||LOCALIDADES[0];
+    $('mConductor').classList.add('on');
+  },
+  async guardarConductorModal(){
+    const c = {
+      nombre:$('mcNombre').value.trim(), documento:$('mcDoc').value.trim(),
+      telefono:$('mcTel').value.trim(), localidad:$('mcLoc').value
+    };
+    if (!c.nombre||!c.documento) return toast('Nombre y documento son obligatorios', true);
+    if (ctxConductorEdit) c.id=ctxConductorEdit;
+    const { error } = await Api.saveConductor(c);
+    if (error) return toast(Api.friendly(error), true);
+    UI.cerrarModal('mConductor'); toast('Conductor guardado ✓'); UI.loadFlota();
+  },
+
+  // — Vínculos —
+  abrirVincular(vehId, placa){
+    ctxVincularVeh = vehId;
+    $('mViInfo').innerHTML = `Vehículo: <span class="placa sm">${placa}</span>`;
+    const yaVinculados = new Set(cacheVinculos.filter(x=>x.vehiculo_id===vehId).map(x=>x.conductor_id));
+    const libres = cacheConductores.filter(c=>c.activo && !yaVinculados.has(c.id));
+    $('mViConductor').innerHTML = libres.length
+      ? libres.map(c=>`<option value="${c.id}">${c.nombre} — CC ${c.documento}</option>`).join('')
+      : '<option value="">— Todos los conductores ya están vinculados —</option>';
+    $('mVincular').classList.add('on');
+  },
+  async confirmarVinculo(){
+    const cid=$('mViConductor').value;
+    if (!cid) return toast('No hay conductor para vincular', true);
+    const { error } = await Api.vincular(cid, ctxVincularVeh);
+    if (error) return toast(Api.friendly(error), true);
+    UI.cerrarModal('mVincular'); toast('Conductor vinculado ✓'); UI.loadFlota();
+  },
+  async desvincular(vinculoId, nombre, placa){
+    if (!confirm(`¿Quitar a ${nombre} del vehículo ${placa}? Sus disponibilidades ya creadas no se borran.`)) return;
+    const { error } = await Api.desvincular(vinculoId);
+    if (error) return toast(Api.friendly(error), true);
+    toast('Vínculo eliminado'); UI.loadFlota();
+  },
+
+  // ══════════ COORDINADOR: Programación ══════════
+  async loadProgramacion(){
+    const [d1,d2] = rangoDia($('prFecha').value||hoyISO());
+    const rows = (await Api.disponibilidadesRango(d1,d2)).filter(r=>r.estado==='validada');
+    const sin  = rows.filter(r=>!r.asignacion_id);
+    const asig = rows.filter(r=>r.asignacion_id);
+    $('prKpiVal').textContent=rows.length;
+    $('prKpiAsig').textContent=asig.length;
+    $('prKpiSin').textContent=sin.length;
+
+    $('prPendientes').innerHTML = sin.length ? sin.map(r=>`
+      <div class="item"><div class="info">
+        <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
+        <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''} · Tel: ${r.telefono||'—'}</div>
+      </div>
+      <div class="acts"><span class="badge b-sin">Sin asignar</span>
+        ${ME.profile.role==='coordinador'?`<button class="btn btn-amber sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}')">Asignar</button>`:''}
+      </div></div>`).join('')
+      : '<div class="empty">🎉 No hay vehículos validados sin asignar para este día.</div>';
+
+    $('prAsignadas').innerHTML = asig.length ? asig.map(r=>`
+      <div class="item"><div class="info">
+        <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.servicio||'Servicio sin nombre'}</div>
+        <div class="t2">${fmtRango(r)} · Zona: ${r.zona||'—'} · ${r.conductor_nombre}${r.asignacion_notas?' · '+r.asignacion_notas:''}</div>
+      </div>
+      <div class="acts"><span class="badge b-asignada">Asignada</span>
+        ${ME.profile.role==='coordinador'?`<button class="btn btn-red-o sm" onclick="UI.quitarAsignacion('${r.asignacion_id}')">Quitar</button>`:''}
+      </div></div>`).join('')
+      : '<div class="empty">Ninguna asignación creada aún para este día.</div>';
+  },
+
+  abrirAsignar(dispId, info, loc){
+    ctxAsignar=dispId;
+    $('mAsigInfo').textContent=info;
+    $('mAsigServicio').value=''; $('mAsigNotas').value='';
+    if (loc) $('mAsigZona').value=loc;
+    $('mAsignar').classList.add('on');
+  },
+  async confirmarAsignacion(){
+    const serv=$('mAsigServicio').value.trim();
+    if (!serv) return toast('Escribe el servicio o ruta', true);
+    const { error } = await Api.asignar(ctxAsignar, serv, $('mAsigZona').value, $('mAsigNotas').value.trim());
+    UI.cerrarModal('mAsignar');
+    if (error) return toast(Api.friendly(error), true);
+    toast('Vehículo asignado ✓'); UI.loadProgramacion();
+  },
+  async quitarAsignacion(id){
+    const { error } = await Api.cancelarAsignacion(id);
+    if (error) return toast(Api.friendly(error), true);
+    toast('Asignación retirada'); UI.loadProgramacion();
+  },
+
+  // ══════════ JEFE: Equipo ══════════
+  async loadEquipo(){
+    const tb=$('tblEquipo').querySelector('tbody');
+    tb.innerHTML='<tr><td colspan="4" class="loading"><span class="spin"></span>Cargando…</td></tr>';
+    const r = await Api.gestionarEmpleados('list');
+    if (r.error){ tb.innerHTML=`<tr><td colspan="4" style="color:var(--red)">${r.error}</td></tr>`; return; }
+    UI._equipo = r.empleados;
+    tb.innerHTML = r.empleados.map(e=>{
+      const esYo = e.id===ME.session.user.id;
+      return `<tr>
+        <td>${e.full_name||'—'}${esYo?' <span style="color:var(--amber)">(tú)</span>':''}</td>
+        <td>${e.email}</td>
+        <td>
+          <select onchange="UI.cambiarRol('${e.id}',this.value)" style="width:auto;padding:5px 9px;font-size:13px">
+            <option value="coordinador" ${e.role==='coordinador'?'selected':''}>Coordinador</option>
+            <option value="analista" ${e.role==='analista'?'selected':''}>Analista</option>
+            <option value="jefe" ${e.role==='jefe'?'selected':''}>Jefe</option>
+          </select>
+        </td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-ghost sm" onclick="UI.abrirReset('${e.id}','${(e.full_name||e.email).replace(/'/g,'')}')">Clave</button>
+          ${esYo?'':`<button class="btn btn-red-o sm" onclick="UI.eliminarEmpleado('${e.id}','${(e.full_name||e.email).replace(/'/g,'')}')">Eliminar</button>`}
+        </td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="4" style="color:var(--faint)">Sin empleados.</td></tr>';
+  },
+
+  abrirEmpleadoModal(){
+    $('mEmpTitle').textContent='Nuevo empleado';
+    $('meNombre').value=''; $('meEmail').value=''; $('mePass').value=''; $('meRol').value='coordinador';
+    $('mEmpleado').classList.add('on');
+  },
+  async guardarEmpleado(){
+    const nombre=$('meNombre').value.trim(), email=$('meEmail').value.trim(),
+          pass=$('mePass').value, rol=$('meRol').value;
+    if (!nombre||!email||!pass) return toast('Nombre, email y contraseña son obligatorios', true);
+    if (pass.length<6) return toast('La contraseña debe tener al menos 6 caracteres', true);
+    const btn=$('meGuardar'); btn.disabled=true; btn.innerHTML='<span class="spin"></span>Creando…';
+    const r = await Api.gestionarEmpleados('create', { email, password:pass, full_name:nombre, role:rol });
+    btn.disabled=false; btn.textContent='Crear';
+    if (r.error) return toast(r.error, true);
+    UI.cerrarModal('mEmpleado'); toast('Empleado creado ✓'); UI.loadEquipo();
+  },
+  async cambiarRol(id, rol){
+    const r = await Api.gestionarEmpleados('setRole', { target_id:id, role:rol });
+    if (r.error){ toast(r.error, true); UI.loadEquipo(); return; }
+    toast('Rol actualizado ✓');
+    if (id===ME.session.user.id){ toast('Cambiaste tu propio rol, recargando…'); setTimeout(()=>location.reload(),1200); }
+  },
+  abrirReset(id, nombre){ UI._resetId=id; $('mrInfo').textContent='Empleado: '+nombre; $('mrPass').value=''; $('mReset').classList.add('on'); },
+  async confirmarReset(){
+    const pass=$('mrPass').value;
+    if (pass.length<6) return toast('Mínimo 6 caracteres', true);
+    const r = await Api.gestionarEmpleados('resetPassword', { target_id:UI._resetId, password:pass });
+    UI.cerrarModal('mReset');
+    if (r.error) return toast(r.error, true);
+    toast('Contraseña restablecida ✓');
+  },
+  async eliminarEmpleado(id, nombre){
+    if (!confirm(`¿Eliminar a ${nombre}? Esta acción no se puede deshacer.`)) return;
+    const r = await Api.gestionarEmpleados('delete', { target_id:id });
+    if (r.error) return toast(r.error, true);
+    toast('Empleado eliminado'); UI.loadEquipo();
+  },
+
+  // ══════════ JEFE: Reportería ══════════
+  async loadReportes(){
+    const [d1] = rangoDia($('rpDesde').value||hoyISO());
+    const [,d2] = rangoDia($('rpHasta').value||hoyISO());
+    const rows = (await Api.disponibilidadesRango(d1,d2))
+      .filter(r=>['validada','pendiente'].includes(r.estado));
+    lastReporte = rows;
+
+    const asig = rows.filter(r=>r.asignacion_id);
+    const sin  = rows.filter(r=>!r.asignacion_id);
+    $('rpKpiDisp').textContent=rows.length;
+    $('rpKpiAsig').textContent=asig.length;
+    $('rpKpiSin').textContent=sin.length;
+    $('rpKpiCob').textContent=(rows.length?Math.round(asig.length/rows.length*100):0)+'%';
+
+    // — Por franja horaria —
+    const fAsig=Array(24).fill(0), fSin=Array(24).fill(0);
+    rows.forEach(r=>{
+      const a=new Date(r.inicio), b=new Date(r.fin);
+      for(let t=new Date(a); t<b; t.setHours(t.getHours()+1)){
+        (r.asignacion_id?fAsig:fSin)[t.getHours()]++;
+      }
+    });
+    if (chFranjas) chFranjas.destroy();
+    Chart.defaults.color='#8C97A6'; Chart.defaults.borderColor='#28303C';
+    chFranjas = new Chart($('chFranjas'), {
+      type:'bar',
+      data:{ labels:HOURS, datasets:[
+        {label:'Asignados', data:fAsig, backgroundColor:'#4EA1FF', stack:'s'},
+        {label:'Sin asignar', data:fSin, backgroundColor:'#FF5D5D', stack:'s'}
+      ]},
+      options:{ responsive:true, plugins:{legend:{position:'bottom'}},
+        scales:{ x:{stacked:true,ticks:{maxRotation:0,autoSkip:true}}, y:{stacked:true,beginAtZero:true,ticks:{precision:0}} } }
+    });
+
+    // — Por localidad —
+    const porLoc={};
+    rows.forEach(r=>{
+      const l=r.localidad||'Sin zona';
+      porLoc[l]=porLoc[l]||{a:0,s:0};
+      r.asignacion_id?porLoc[l].a++:porLoc[l].s++;
+    });
+    const locs=Object.keys(porLoc).sort((x,y)=>(porLoc[y].a+porLoc[y].s)-(porLoc[x].a+porLoc[x].s));
+    if (chZonas) chZonas.destroy();
+    chZonas = new Chart($('chZonas'), {
+      type:'bar',
+      data:{ labels:locs, datasets:[
+        {label:'Asignados', data:locs.map(l=>porLoc[l].a), backgroundColor:'#4EA1FF', stack:'s'},
+        {label:'Sin asignar', data:locs.map(l=>porLoc[l].s), backgroundColor:'#FFB020', stack:'s'}
+      ]},
+      options:{ indexAxis:'y', responsive:true, plugins:{legend:{position:'bottom'}},
+        scales:{ x:{stacked:true,beginAtZero:true,ticks:{precision:0}}, y:{stacked:true} } }
+    });
+
+    // — Tabla sin asignar —
+    $('tblSinAsignar').querySelector('tbody').innerHTML = sin.length ? sin.map(r=>`
+      <tr><td><span class="placa sm">${r.placa}</span></td><td>${r.conductor_nombre}</td>
+      <td>${fmtFecha(r.inicio)}</td><td>${fmtHora(r.inicio)} → ${fmtHora(r.fin)}</td>
+      <td>${r.localidad||'—'}</td><td>${estadoBadge(r)}</td></tr>`).join('')
+      : '<tr><td colspan="6" style="color:var(--green)">✓ Toda la flota disponible está asignada en el rango.</td></tr>';
+
+    // — Mapa de calor —
+    if (!mapHeat){
+      mapHeat = L.map('mapaCalor').setView([4.62,-74.11], 11);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        {attribution:'© OpenStreetMap · © CARTO', maxZoom:19}).addTo(mapHeat);
+    }
+    setTimeout(()=>mapHeat.invalidateSize(), 150);
+    UI.renderHeat();
+  },
+
+  setHeatMode(mode){
+    heatMode=mode;
+    $('hmModeDisp').classList.toggle('on', mode==='disp');
+    $('hmModeGps').classList.toggle('on', mode==='gps');
+    UI.renderHeat();
+  },
+
+  async renderHeat(){
+    if (!mapHeat || !lastReporte) return;
+    if (heatLayer){ heatLayer.remove(); heatLayer=null; }
+    zoneMarkers.forEach(m=>m.remove()); zoneMarkers=[];
+    let pts=[];
+
+    if (heatMode==='disp'){
+      const porLoc={};
+      lastReporte.forEach(r=>{ const l=r.localidad; if(LOC_COORDS[l]) porLoc[l]=(porLoc[l]||0)+1; });
+      const max=Math.max(1,...Object.values(porLoc));
+      Object.entries(porLoc).forEach(([l,n])=>{
+        const [lat,lng]=LOC_COORDS[l];
+        pts.push([lat,lng, n/max]);
+        zoneMarkers.push(L.marker([lat,lng],{icon:L.divIcon({className:'',html:
+          `<div style="background:#151B23;border:1px solid #FFB020;color:#E9EDF2;border-radius:8px;padding:2px 7px;font:600 11px Inter,sans-serif;white-space:nowrap">${l}: ${n}</div>`,
+          iconSize:null})}).addTo(mapHeat));
+      });
+    } else {
+      const ubs = await Api.ultimasUbicaciones();
+      pts = ubs.map(u=>[u.lat,u.lng,0.8]);
+      ubs.forEach(u=>{
+        zoneMarkers.push(L.circleMarker([u.lat,u.lng],{radius:6,color:'#4EA1FF',fillColor:'#4EA1FF',fillOpacity:.9})
+          .bindPopup(`<b>${u.placa}</b><br>${u.nombre}<br><small>${new Date(u.reportada_at).toLocaleString('es-CO')}</small>`)
+          .addTo(mapHeat));
+      });
+      if (!pts.length) toast('Aún no hay ubicaciones GPS reportadas', true);
+    }
+    if (pts.length){
+      heatLayer=L.heatLayer(pts,{radius:38,blur:26,maxZoom:14,
+        gradient:{0.2:'#2b5cff',0.5:'#37C97D',0.75:'#FFB020',1:'#FF5D5D'}}).addTo(mapHeat);
+    }
+  }
+};
+
+// ══════════ Componentes reutilizables ══════════
+function buildHourRail(elId, state, onChange){
+  const el=$(elId);
+  el.innerHTML = HOURS.map((h,i)=>`<button type="button" data-i="${i}">${h}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      const i=+b.dataset.i;
+      if (state.start===null || (state.start!==null && state.end!==null)){ state.start=i; state.end=null; }
+      else state.end=i;
+      paintRail(el, state); onChange();
+    };
+  });
+  paintRail(el, state);
+}
+function paintRail(el, state){
+  el.querySelectorAll('button').forEach(b=>{
+    const i=+b.dataset.i;
+    b.className='';
+    if (i===state.start || i===state.end) b.className='sel';
+    else if (state.start!==null && state.end!==null){
+      if (state.end>state.start ? (i>state.start&&i<state.end) : (i>state.start||i<state.end)) b.className='mid';
+    }
+  });
+}
+function ndResumen(){
+  const el=$('ndResumen');
+  if (nd.start===null){ el.innerHTML='Selecciona días y franja horaria.'; return; }
+  const fin = nd.end!==null?HOURS[nd.end]:'…';
+  const noct = nd.end!==null && nd.end<=nd.start;
+  const horas = nd.end!==null ? (nd.end>nd.start?nd.end-nd.start:24-nd.start+nd.end) : 0;
+  el.innerHTML=`Franja: <b>${HOURS[nd.start]} → ${fin}</b>${noct?' <b>(cruza medianoche 🌙)</b>':''}
+    ${nd.end!==null?` · <b>${horas} h</b>`:''} · Días seleccionados: <b>${nd.dias.size}</b>`;
+}
+function acResumen(){
+  const el=$('acResumen');
+  if (ac.start===null){ el.innerHTML='Selecciona la franja.'; return; }
+  const fin=ac.end!==null?HOURS[ac.end]:'…';
+  el.innerHTML=`Franja: <b>${HOURS[ac.start]} → ${fin}</b>${ac.end!==null&&ac.end<=ac.start?' (cruza medianoche 🌙)':''}`;
+}
+function buildDiasRail(){
+  const base=$('ndFecha').value||hoyISO();
+  nd.dias=new Set([base]);
+  const d0=new Date(base+'T00:00:00');
+  const el=$('ndDias'); el.innerHTML='';
+  for(let k=0;k<7;k++){
+    const d=new Date(d0); d.setDate(d.getDate()+k);
+    const iso=d.toISOString().slice(0,10);
+    const b=document.createElement('button');
+    b.type='button'; b.textContent=DIAS[d.getDay()]+' '+d.getDate();
+    b.className=nd.dias.has(iso)?'sel':'';
+    b.onclick=()=>{ nd.dias.has(iso)?nd.dias.delete(iso):nd.dias.add(iso);
+      b.classList.toggle('sel'); ndResumen(); };
+    el.appendChild(b);
+  }
+  ndResumen();
+}
+
+// ══════════ Arranque ══════════
+(async function init(){
+  if (!APP_CONFIG.SUPABASE_URL || APP_CONFIG.SUPABASE_URL.includes('TU_PROYECTO')){
+    $('loginErr').textContent='⚠ Configura SUPABASE_URL y SUPABASE_ANON_KEY en config.js';
+    $('loginErr').style.display='block';
+    return;
+  }
+  const session = await Api.getSession();
+  if (session) await UI.enterApp();
+  ['lgDoc','lgPass'].forEach(id=>$(id).addEventListener('keydown', e=>{ if(e.key==='Enter') UI.doLogin(); }));
+})();

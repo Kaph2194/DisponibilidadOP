@@ -1,12 +1,16 @@
-// ╔══════════════════════════════════════════════════╗
-// ║   SPECIAL CAR — FleetSync  |  config.js          ║
-// ║   Solo edita este archivo antes de publicar      ║
-// ╚══════════════════════════════════════════════════╝
+// ╔══════════════════════════════════════════════════════════╗
+// ║  SPECIAL CAR — FleetSync v2  |  config.js                ║
+// ║  Único archivo que debes editar antes de publicar.       ║
+// ║  Los datos están en: Supabase → Settings → API           ║
+// ╚══════════════════════════════════════════════════════════╝
 
-const SHEETS_CONFIG = {
-  // URL del Google Apps Script desplegado como Web App
-  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxNi4zzjv-OkuqxGqMPb-jkJK-4qqd6oVYu7nRPk9X0Yc7oqzZiU_gmLD1v7jUuAQ_CVQ/exec",
+const APP_CONFIG = {
+  // URL del proyecto, ej: https://abcdefgh.supabase.co
+  SUPABASE_URL: "https://TU_PROYECTO.supabase.co",
 
-  // PIN del administrador (placa: ADMIN)
-  ADMIN_PIN: "admin123"
+  // anon public key (es segura de publicar: RLS protege los datos)
+  SUPABASE_ANON_KEY: "TU_ANON_KEY",
+
+  // Dominio sintético para las cuentas de conductores (no cambiar tras el primer uso)
+  DRIVER_EMAIL_DOMAIN: "conductores.specialcar.com.co"
 };

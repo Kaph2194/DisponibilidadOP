@@ -1,17 +1,6 @@
-# No subir archivos del sistema operativo
 .DS_Store
-Thumbs.db
-desktop.ini
-
-# No subir carpetas de editores
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Logs
-*.log
-
-# Si en algún momento usas Node.js
+.env
+.env.local
+supabase/.branches
+supabase/.temp
 node_modules/
-npm-debug.log*
