@@ -6,7 +6,7 @@
 
 const APP_CONFIG = {
   // URL del proyecto, ej: https://abcdefgh.supabase.co
-  SUPABASE_URL: "https://yaeknutbljjeetukhefq.supabase.co/rest/v1/",
+  SUPABASE_URL: "https://yaeknutbljjeetukhefq.supabase.co",
 
   // anon public key (es segura de publicar: RLS protege los datos)
   SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlhZWtudXRibGpqZWV0dWtoZWZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNjU3NzUsImV4cCI6MjEwMDk0MTc3NX0.ghq4dafj5X1iEt-4_LAWSRaIuxABBorKmo49VXoRsg8",
