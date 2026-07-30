@@ -6,6 +6,7 @@ Sistema de disponibilidad y programación de flota con 4 roles, base de datos en
 
 | Rol | Ingreso | Qué hace |
 |---|---|---|
+| **Administrador** | Email + contraseña | Configura **todo**: gestiona el equipo (crea/elimina/roles) y **carga la base diaria de conductores** desde el Excel de la plataforma (importar/exportar). Tiene acceso a todas las pantallas |
 | **Conductor** | Placa + Documento | Sube su disponibilidad por franjas eligiendo con cuál de sus vehículos, reporta la ubicación GPS del vehículo, ve/cancela sus turnos |
 | **Analista** | Email + contraseña | Valida disponibilidades (valida/rechaza), crea disponibilidades a nombre de conductores, registra conductores |
 | **Coordinador de operaciones** | Email + contraseña | Programa los vehículos (asigna servicio/ruta/zona), administra vehículos y **vincula conductores a vehículos** |
@@ -82,17 +83,54 @@ Sube `index.html`, `config.js`, `js/`, `assets/` a **GitHub Pages** (o Netlify/V
 3. **Coordinador** abre *Programación*, elige el día → asigna servicio/ruta y zona a cada disponibilidad validada. El contador rojo "Sin asignar" debe llegar a 0.
 4. **Jefe de operación** abre *Centro de decisión* con el rango de fechas → ve cobertura (%), gráfica apilada por franja horaria (asignados vs sin asignar), gráfica por localidad, **mapa de calor** (concentración por zona o por GPS reportado) y la tabla de vehículos sin asignar para tomar decisiones con el equipo.
 
+## Cargue diario de la base de conductores (rol Administrador)
+
+El administrador entra a la pestaña **Base de datos** y:
+
+- **⬆ Cargar documento del día:** sube el Excel `DocumentosAfiliados_*.xlsx` (el mismo que exporta tu plataforma actual, con columnas Empresa, Placa, Tipo, Nombre, Nro Identificacion, Nombre Documento, Inicio Vigencia, Vigente Hasta, Estado, Fecha - Hora Cargue, Usuario). El sistema **deriva automáticamente** los conductores (filas tipo *Conductor*), los vehículos (por placa), los vínculos conductor-vehículo y el estado de vigencia de cada documento. Es idempotente: volver a subir el mismo archivo no duplica nada; solo agrega lo nuevo y refresca la foto de documentos.
+- **⬇ Descargar base actual:** exporta todos los documentos a un Excel con el mismo formato, para respaldo.
+- **Tabla de vencimientos:** muestra los vehículos con documentos vencidos o sin cargar (SOAT, tecnomecánica, licencia, etc.), para no programar un vehículo con papeles al día.
+
+### Cargue automático diario (opcional)
+
+Si quieres que la base se actualice sola cada mañana sin que nadie suba el archivo, hay dos caminos:
+
+1. **Si tu plataforma actual puede enviar el Excel a una URL o dejarlo en un storage** (Google Drive, S3, un FTP): se crea una segunda Edge Function programada con **pg_cron** que lo descarga y llama a `importar_cargue` cada día a una hora fija. Requiere que definamos de dónde sale el archivo automáticamente.
+2. **Si el Excel solo se puede descargar manualmente** de tu plataforma: lo más práctico es el botón (10 segundos al día).
+
+Para montar la opción 1 necesito saber cómo queda disponible el archivo cada día (¿lo genera un correo? ¿una URL? ¿un Drive?). Dímelo y preparo la función programada.
+
+## Alerta de documentos antes de despachar
+
+Con el cargue diario, el sistema sabe qué documentos de cada vehículo están **vencidos** o **sin cargar**. Los clasifica en dos grupos:
+
+- **Críticos para circular** (bloquean el despacho): SOAT, revisión técnico-mecánica, revisión preventiva, licencia de conducción, seguro de responsabilidad civil, tarjeta de operación, exámenes médicos y planilla de seguridad social.
+- **Administrativos** (solo advertencia): RUT, hoja de vida, contratos, etc.
+
+La alerta aparece en varios puntos:
+
+- **Programación (coordinador/admin):** cada vehículo pendiente muestra su estado documental. Si tiene un documento crítico vencido o sin cargar, la fila se marca en rojo y el botón cambia a "Despachar igual". Al intentar asignarlo, el modal muestra qué documentos faltan y **exige marcar una casilla de confirmación** ("despacho bajo mi responsabilidad") antes de continuar. La asignación queda marcada con la nota `[DESPACHADO CON DOCS PENDIENTES]` para trazabilidad.
+- **Validación (analista):** cada disponibilidad muestra una etiqueta con su estado documental.
+- **Reportería (jefe):** KPI "Con docs críticos" y una tabla de todos los vehículos del rango con documentos pendientes, con el detalle de cuáles.
+- **Inicio (conductor):** si su vehículo tiene documentos críticos pendientes, se le avisa en sus próximos turnos para que lo reporte.
+
+El bloqueo no es absoluto (operaciones puede despachar bajo su responsabilidad con la confirmación), pero nunca pasa desapercibido. Si prefieres que sea un bloqueo **total** (imposible asignar hasta regularizar), se puede endurecer con una sola línea; dime y lo cambio.
+
 ## Modelo de datos
 
 ```
-profiles            (usuario ↔ rol)
-conductores         (persona: nombre, documento=PIN, teléfono, localidad)
-vehiculos           (placa, tipo, número interno, localidad base)
-conductor_vehiculo  (vínculo M:N — lo administran coordinador y jefe)
+profiles            (usuario ↔ rol: conductor, analista, coordinador, jefe, admin)
+conductores         (persona: nombre, documento=PIN, teléfono, localidad, empresa)
+vehiculos           (placa, tipo, número interno, localidad, empresa)
+conductor_vehiculo  (vínculo M:N — lo administran coordinador, jefe y admin)
 disponibilidades    (conductor + vehículo + inicio/fin — con restricciones de NO solapamiento)
 asignaciones        (servicio, zona, notas — 1 por disponibilidad)
 ubicaciones         (lat/lng por conductor y vehículo)
+documentos          (foto diaria de vigencias: SOAT, tecnomecánica, licencia, etc.)
+cargues             (auditoría de cada importación diaria)
 ```
+
+El cargue diario del Excel alimenta `conductores`, `vehiculos`, `conductor_vehiculo` y `documentos` mediante la función `importar_cargue`, que solo pueden ejecutar admin y jefe.
 
 Seguridad: cada tabla tiene **Row Level Security**. Un conductor solo ve y modifica lo suyo; el staff ve todo; solo el coordinador puede crear asignaciones; solo analista/coordinador validan. Todo se verifica en la base de datos, no en el navegador.
 

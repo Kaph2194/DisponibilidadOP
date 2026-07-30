@@ -13,7 +13,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const ROLES_STAFF = ['coordinador', 'analista', 'jefe'];
+const ROLES_STAFF = ['coordinador', 'analista', 'jefe', 'admin'];
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -44,11 +44,11 @@ Deno.serve(async (req) => {
   const { data: { user }, error: uErr } = await asUser.auth.getUser(token);
   if (uErr || !user) return json({ error: 'Sesión inválida.' }, 401);
 
-  // 2) El que llama DEBE ser jefe
+  // 2) El que llama DEBE ser jefe o admin
   const { data: perfil } = await admin
     .from('profiles').select('role').eq('id', user.id).single();
-  if (!perfil || perfil.role !== 'jefe')
-    return json({ error: 'Solo el jefe de operación puede gestionar empleados.' }, 403);
+  if (!perfil || !['jefe', 'admin'].includes(perfil.role))
+    return json({ error: 'Solo el jefe de operación o el administrador pueden gestionar empleados.' }, 403);
 
   // 3) Ejecutar la acción
   let payload;
@@ -96,12 +96,12 @@ Deno.serve(async (req) => {
     if (action === 'setRole') {
       const { target_id, role } = payload;
       if (!target_id || !ROLES_STAFF.includes(role)) return json({ error: 'Datos inválidos.' }, 400);
-      // Evitar quedarse sin ningún jefe
-      if (role !== 'jefe') {
+      // Evitar quedarse sin ningún jefe ni admin
+      if (!['jefe', 'admin'].includes(role)) {
         const { count } = await admin.from('profiles')
-          .select('id', { count: 'exact', head: true }).eq('role', 'jefe');
+          .select('id', { count: 'exact', head: true }).in('role', ['jefe', 'admin']);
         if (count <= 1 && target_id === user.id)
-          return json({ error: 'No puedes quitarte el rol de jefe: eres el único jefe.' }, 400);
+          return json({ error: 'No puedes quitarte el rol: eres el único jefe/admin.' }, 400);
       }
       await admin.from('profiles').update({ role }).eq('id', target_id);
       await admin.auth.admin.updateUserById(target_id, { user_metadata: { role } });

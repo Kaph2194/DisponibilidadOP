@@ -20,6 +20,7 @@ declare
 begin
   for emp in
     select * from (values
+      ('admin@specialcar.com.co',    'Administrador','admin'),
       ('jose@specialcar.com.co',     'José',     'jefe'),
       ('christian@specialcar.com.co','Christian','coordinador'),
       ('miguel@specialcar.com.co',   'Miguel',   'coordinador'),
@@ -64,6 +65,7 @@ order by p.role, p.full_name;
 --  CONTRASEÑA TEMPORAL: Special2026*  (para las 6 cuentas)
 --
 --  Cuentas creadas:
+--   Administrador admin@specialcar.com.co     → admin (configura TODO)
 --   José       jose@specialcar.com.co        → jefe
 --   Christian  christian@specialcar.com.co   → coordinador
 --   Miguel     miguel@specialcar.com.co      → coordinador
@@ -71,6 +73,7 @@ order by p.role, p.full_name;
 --   Claudia    claudia@specialcar.com.co     → coordinador
 --   Juan       juan@specialcar.com.co        → analista
 --
---  José puede cambiar contraseñas, roles, crear y eliminar
---  empleados desde la app (menú "Equipo").
+--  El admin y José pueden gestionar el equipo (crear, eliminar,
+--  cambiar roles). El admin además carga la base diaria de
+--  conductores desde el Excel (menú "Base de datos").
 -- ============================================================

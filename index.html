@@ -360,7 +360,55 @@ tr:last-child td{border-bottom:none}
       <div id="prAsignadas"></div>
     </section>
 
-    <!-- ── JEFE: Equipo ── -->
+    <!-- ── ADMIN: Base de datos (cargue diario) ── -->
+    <section class="page" id="p-ad-datos">
+      <div class="page-h"><div><h2>Base de datos de conductores</h2><div class="sub">Cargue diario del documento de afiliados y documentos</div></div></div>
+
+      <div class="grid g4" style="margin-bottom:18px">
+        <div class="card kpi"><div class="v" id="adKpiCond">0</div><div class="l">Conductores</div></div>
+        <div class="card kpi"><div class="v" id="adKpiVeh">0</div><div class="l">Vehículos</div></div>
+        <div class="card kpi"><div class="v" id="adKpiVin">0</div><div class="l">Vínculos</div></div>
+        <div class="card kpi warn"><div class="v" id="adKpiVenc">0</div><div class="l">Docs. vencidos</div></div>
+      </div>
+
+      <div class="grid g2">
+        <div class="card">
+          <h3 style="font-size:19px;margin-bottom:6px">⬆ Cargar documento del día</h3>
+          <p class="note" style="margin-top:0">Sube el Excel <b>DocumentosAfiliados</b> (mismo formato que exporta tu plataforma). El sistema deriva conductores, vehículos, vínculos y vigencias. Reemplaza la foto de documentos del día anterior; no borra disponibilidades ni asignaciones.</p>
+          <input type="file" id="adFile" accept=".xlsx,.xls" style="margin-top:12px;padding:9px">
+          <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-amber" style="width:auto" id="adBtnImport" onclick="UI.importarExcel()">Procesar y cargar</button>
+            <span class="loading" id="adImportStatus"></span>
+          </div>
+          <div class="summary" id="adResultado" style="display:none"></div>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size:19px;margin-bottom:6px">⬇ Descargar base actual</h3>
+          <p class="note" style="margin-top:0">Exporta todos los documentos cargados a un Excel con el mismo formato original, para respaldo o revisión.</p>
+          <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost" style="width:auto" onclick="UI.exportarExcel()">Descargar Excel</button>
+            <span class="loading" id="adExportStatus"></span>
+          </div>
+          <h3 style="font-size:16px;margin:20px 0 8px">Últimos cargues</h3>
+          <div id="adHistorial" style="font-size:13px"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h3 style="font-size:19px">Vehículos con documentos vencidos o sin cargar</h3>
+          <input id="adBuscarPlaca" placeholder="Buscar placa…" style="max-width:200px" oninput="UI.filtrarDocs()">
+        </div>
+        <div class="tbl-wrap" style="border:none;margin-top:12px"><table id="tblDocsVeh">
+          <thead><tr><th>Placa</th><th>Vencidos</th><th>Sin cargar</th><th>Vigentes</th><th>Próximo vencimiento</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+
+      <p class="note" style="margin-top:16px">💡 <b>Cargue automático diario:</b> este cargue puede automatizarse para que corra solo cada mañana. Requiere un pequeño paso técnico adicional (ver README, sección "Cargue automático"). Por ahora, hazlo con el botón cada día.</p>
+    </section>
+
+    <!-- ── ADMIN/JEFE: Equipo ── -->
     <section class="page" id="p-j-equipo">
       <div class="page-h"><div><h2>Equipo de operaciones</h2><div class="sub">Crea, elimina y asigna roles a los empleados</div></div>
         <button class="btn btn-amber sm" style="width:auto" onclick="UI.abrirEmpleadoModal()">＋ Nuevo empleado</button></div>
@@ -385,6 +433,7 @@ tr:last-child td{border-bottom:none}
         <div class="card kpi"><div class="v" id="rpKpiAsig">0</div><div class="l">Asignadas</div></div>
         <div class="card kpi warn"><div class="v" id="rpKpiSin">0</div><div class="l">Sin asignar</div></div>
         <div class="card kpi"><div class="v" id="rpKpiCob">0%</div><div class="l">Cobertura</div></div>
+        <div class="card kpi warn"><div class="v" id="rpKpiDocs">0</div><div class="l">Con docs críticos</div></div>
       </div>
 
       <div class="grid g2" style="margin-bottom:18px">
@@ -400,6 +449,14 @@ tr:last-child td{border-bottom:none}
         </div>
         <div id="mapaCalor"></div>
         <p class="note">La vista por zona usa el centroide de cada localidad ponderado por vehículos disponibles. La vista GPS usa la última ubicación reportada por cada conductor.</p>
+      </div>
+
+      <div class="chart-box" style="margin-bottom:18px">
+        <h3 style="color:var(--red)">🚨 Vehículos con documentos críticos (no aptos para despacho)</h3>
+        <p class="note" style="margin-top:0">Disponibilidades cuyo vehículo tiene SOAT, tecnomecánica, licencia u otro documento legal vencido o sin cargar. Prioriza regularizarlos o reasignar.</p>
+        <div class="tbl-wrap" style="border:none;margin-top:10px"><table id="tblDocsCriticos">
+          <thead><tr><th>Placa</th><th>Conductor</th><th>Fecha</th><th>Estado</th><th>Documentos pendientes</th></tr></thead>
+          <tbody></tbody></table></div>
       </div>
 
       <div class="chart-box">
@@ -421,9 +478,14 @@ tr:last-child td{border-bottom:none}
   <div class="modal">
     <h3>Asignar vehículo</h3>
     <p class="sub" id="mAsigInfo"></p>
+    <div id="mAsigAlerta" style="display:none;background:rgba(255,93,93,.12);border:1px solid var(--red);color:#ffb3b3;border-radius:9px;padding:11px 13px;font-size:13px;margin:12px 0"></div>
     <label>Servicio / ruta</label><input id="mAsigServicio" placeholder="Ej: Ruta empresarial Chía AM">
     <label>Zona de operación</label><select id="mAsigZona"></select>
     <label>Notas</label><textarea id="mAsigNotas" rows="2"></textarea>
+    <label id="mAsigConfirmBox" style="display:none;align-items:center;gap:9px;margin-top:14px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--text);cursor:pointer">
+      <input type="checkbox" id="mAsigConfirm" style="width:auto;margin:0">
+      Confirmo que despacho este vehículo pese a los documentos pendientes, bajo mi responsabilidad.
+    </label>
     <div class="acts">
       <button class="btn btn-ghost sm" onclick="UI.cerrarModal('mAsignar')">Cancelar</button>
       <button class="btn btn-amber sm" style="width:auto" onclick="UI.confirmarAsignacion()">Asignar</button>
@@ -485,6 +547,7 @@ tr:last-child td{border-bottom:none}
       <option value="coordinador">Coordinador de operaciones</option>
       <option value="analista">Analista</option>
       <option value="jefe">Jefe de operación</option>
+      <option value="admin">Administrador</option>
     </select>
     <p class="note" id="meNota">La cuenta queda lista para entrar con ese email y contraseña.</p>
     <div class="acts">
@@ -523,6 +586,7 @@ tr:last-child td{border-bottom:none}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="config.js"></script>

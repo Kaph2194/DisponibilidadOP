@@ -26,7 +26,8 @@ const ROLE_LABELS = {
   conductor:   'Conductor',
   analista:    'Analista',
   coordinador: 'Coordinador de operaciones',
-  jefe:        'Jefe de operación'
+  jefe:        'Jefe de operación',
+  admin:       'Administrador'
 };
 
 const Api = {
@@ -230,7 +231,7 @@ const Api = {
     return data;
   },
 
-  // ── Equipo (solo jefe) · vía Edge Function segura ────────
+  // ── Equipo (solo jefe/admin) · vía Edge Function segura ──
   async gestionarEmpleados(action, extra = {}) {
     const session = await this.getSession();
     if (!session) return { error: 'Sesión expirada.' };
@@ -250,5 +251,43 @@ const Api = {
     } catch (e) {
       return { error: 'No se pudo contactar la función. ¿Está desplegada? ' + e.message };
     }
+  },
+
+  // ── Cargue diario de conductores/documentos (admin/jefe) ──
+  async importarCargue(archivo, rows) {
+    const { data, error } = await sb.rpc('importar_cargue', { p_archivo: archivo, p_rows: rows });
+    if (error) return { error: error.message };
+    return data;
+  },
+
+  async ultimoCargue() {
+    const { data } = await sb.from('cargues').select('*')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    return data;
+  },
+
+  async listarCargues() {
+    const { data, error } = await sb.from('cargues').select('*')
+      .order('created_at', { ascending: false }).limit(30);
+    return error ? [] : data;
+  },
+
+  // Todos los documentos (para exportar el Excel)
+  async todosLosDocumentos() {
+    const PAGE = 1000; let from = 0, all = [];
+    while (true) {
+      const { data, error } = await sb.from('documentos').select('*')
+        .order('placa').range(from, from + PAGE - 1);
+      if (error || !data || !data.length) break;
+      all = all.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  },
+
+  async docsPorVehiculo() {
+    const { data, error } = await sb.from('v_docs_vehiculo').select('*');
+    return error ? [] : data;
   }
 };

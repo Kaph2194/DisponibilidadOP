@@ -12,6 +12,7 @@ let nd = { start:null, end:null, dias:new Set() };   // conductor
 let ac = { start:null, end:null };                    // analista
 // contexto de modales
 let ctxAsignar=null, ctxCancelar=null, ctxConductorEdit=null, ctxVehiculoEdit=null, ctxVincularVeh=null;
+let ctxAsignarBloqueado=false;
 // mapas / charts
 let mapUbic=null, markUbic=null, mapHeat=null, heatLayer=null, zoneMarkers=[];
 let chFranjas=null, chZonas=null;
@@ -42,13 +43,31 @@ function estadoBadge(r){
   const m={pendiente:'b-pendiente',validada:'b-validada',rechazada:'b-rechazada',cancelada:'b-cancelada'};
   return `<span class="badge ${m[r.estado]||'b-pendiente'}">${r.estado}</span>`;
 }
+// Alerta de documentos: devuelve {nivel:'ok'|'warn'|'block', texto, detalle}
+function docAlerta(r){
+  const crit = r.docs_criticos_pendientes||0;
+  const critVenc = r.docs_criticos_vencidos||0;
+  if (crit>0){
+    return { nivel:'block',
+      texto: critVenc>0 ? `⛔ ${critVenc} doc. crítico(s) vencido(s)` : `⛔ ${crit} doc. crítico(s) sin cargar`,
+      detalle: r.detalle_criticos||'' };
+  }
+  const otros = (r.docs_vencidos||0)+(r.docs_sin_cargar||0);
+  if (otros>0) return { nivel:'warn', texto:`⚠ ${otros} doc. administrativo(s) pendiente(s)`, detalle:'' };
+  return { nivel:'ok', texto:'✓ Documentos al día', detalle:'' };
+}
+function docBadge(r){
+  const a=docAlerta(r);
+  const cls = a.nivel==='block'?'b-cancelada':(a.nivel==='warn'?'b-pendiente':'b-validada');
+  return `<span class="badge ${cls}" title="${a.detalle}">${a.texto}</span>`;
+}
 function tsLocal(fecha, hhmm){ return new Date(fecha+'T'+hhmm+':00').toISOString(); }
 function rangoDia(fecha){
   const a=new Date(fecha+'T00:00:00');
   return [a.toISOString(), new Date(a.getTime()+864e5).toISOString()];
 }
-const puedeGestionarFlota = () => ['coordinador','jefe'].includes(ME.profile.role);
-const puedeGestionarPersonas = () => ['coordinador','jefe','analista'].includes(ME.profile.role);
+const puedeGestionarFlota = () => ['coordinador','jefe','admin'].includes(ME.profile.role);
+const puedeGestionarPersonas = () => ['coordinador','jefe','analista','admin'].includes(ME.profile.role);
 
 // ══════════ Navegación por rol ══════════
 const NAV = {
@@ -74,6 +93,13 @@ const NAV = {
     ['p-o-programar','🗓','Programación'],
     ['p-s-flota','🚗','Flota'],
     ['p-j-equipo','👥','Equipo']
+  ],
+  admin: [
+    ['p-j-reportes','📊','Reportería'],
+    ['p-o-programar','🗓','Programación'],
+    ['p-s-flota','🚗','Flota'],
+    ['p-ad-datos','🗄','Base de datos'],
+    ['p-j-equipo','👥','Equipo']
   ]
 };
 
@@ -86,7 +112,8 @@ const PAGE_LOADERS = {
   'p-s-flota':   () => UI.loadFlota(),
   'p-o-programar': () => UI.loadProgramacion(),
   'p-j-reportes':  () => UI.loadReportes(),
-  'p-j-equipo':    () => UI.loadEquipo()
+  'p-j-equipo':    () => UI.loadEquipo(),
+  'p-ad-datos':    () => UI.loadAdminDatos()
 };
 
 function buildNav(role){
@@ -190,11 +217,14 @@ const UI = {
     $('cKpiHoras').textContent = Math.round(delMes.reduce((s,t)=>s+horasEntre(t.inicio,t.fin),0))+' h';
     $('cKpiProx').textContent = prox.length ? fmtFecha(prox[0].inicio) : '—';
 
-    $('cProximos').innerHTML = prox.length ? prox.slice(0,6).map(t=>`
-      <div class="item"><div class="info">
+    $('cProximos').innerHTML = prox.length ? prox.slice(0,6).map(t=>{
+      const al=docAlerta(t);
+      return `<div class="item"><div class="info">
         <div class="t1"><span class="placa sm">${t.placa}</span> &nbsp;${fmtRango(t)}</div>
         <div class="t2">${t.localidad||'Sin localidad'}${t.asignacion_id?` · Servicio: ${t.servicio||'—'} (${t.zona||''})`:''}</div>
-      </div>${estadoBadge(t)}</div>`).join('')
+        ${al.nivel==='block'?`<div class="t2" style="color:var(--red);margin-top:4px">⛔ Tu vehículo tiene documentos pendientes: ${al.detalle||''}. Repórtalo a operaciones.</div>`:''}
+      </div>${estadoBadge(t)}</div>`;
+    }).join('')
       : '<div class="empty">No tienes turnos próximos. Sube tu disponibilidad para que te programen.</div>';
 
     $('cTurnosList').innerHTML = turnos.length ? turnos.map(t=>{
@@ -299,6 +329,7 @@ const UI = {
       <div class="item"><div class="info">
         <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
         <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''}${r.notas?' · '+r.notas:''}</div>
+        <div style="margin-top:6px">${docBadge(r)}</div>
       </div>
       <div class="acts">${estadoBadge(r)}
         ${soyValidador && r.estado==='pendiente' ? `
@@ -462,14 +493,19 @@ const UI = {
     $('prKpiAsig').textContent=asig.length;
     $('prKpiSin').textContent=sin.length;
 
-    $('prPendientes').innerHTML = sin.length ? sin.map(r=>`
-      <div class="item"><div class="info">
+    $('prPendientes').innerHTML = sin.length ? sin.map(r=>{
+      const al = docAlerta(r);
+      const bloqueado = al.nivel==='block';
+      return `<div class="item" style="${bloqueado?'border-color:var(--red);border-left:3px solid var(--red)':''}"><div class="info">
         <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
         <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''} · Tel: ${r.telefono||'—'}</div>
+        <div style="margin-top:6px">${docBadge(r)}</div>
+        ${bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
       </div>
       <div class="acts"><span class="badge b-sin">Sin asignar</span>
-        ${ME.profile.role==='coordinador'?`<button class="btn btn-amber sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}')">Asignar</button>`:''}
-      </div></div>`).join('')
+        ${[ 'coordinador','admin'].includes(ME.profile.role)?`<button class="btn ${bloqueado?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado},'${(al.detalle||'').replace(/'/g,'')}')">${bloqueado?'Despachar igual':'Asignar'}</button>`:''}
+      </div></div>`;
+    }).join('')
       : '<div class="empty">🎉 No hay vehículos validados sin asignar para este día.</div>';
 
     $('prAsignadas').innerHTML = asig.length ? asig.map(r=>`
@@ -478,25 +514,42 @@ const UI = {
         <div class="t2">${fmtRango(r)} · Zona: ${r.zona||'—'} · ${r.conductor_nombre}${r.asignacion_notas?' · '+r.asignacion_notas:''}</div>
       </div>
       <div class="acts"><span class="badge b-asignada">Asignada</span>
-        ${ME.profile.role==='coordinador'?`<button class="btn btn-red-o sm" onclick="UI.quitarAsignacion('${r.asignacion_id}')">Quitar</button>`:''}
+        ${[ 'coordinador','admin'].includes(ME.profile.role)?`<button class="btn btn-red-o sm" onclick="UI.quitarAsignacion('${r.asignacion_id}')">Quitar</button>`:''}
       </div></div>`).join('')
       : '<div class="empty">Ninguna asignación creada aún para este día.</div>';
   },
 
-  abrirAsignar(dispId, info, loc){
+  abrirAsignar(dispId, info, loc, bloqueado, detalle){
     ctxAsignar=dispId;
+    ctxAsignarBloqueado = !!bloqueado;
     $('mAsigInfo').textContent=info;
     $('mAsigServicio').value=''; $('mAsigNotas').value='';
     if (loc) $('mAsigZona').value=loc;
+    const alerta = $('mAsigAlerta');
+    if (bloqueado){
+      alerta.style.display='block';
+      alerta.innerHTML = `⛔ <b>Este vehículo tiene documentos críticos pendientes.</b><br>
+        ${detalle?'Pendiente: '+detalle+'<br>':''}
+        No debería despacharse hasta regularizarlos. Si aun así decides despacharlo, marca la casilla para confirmar.`;
+      $('mAsigConfirmBox').style.display='flex';
+      $('mAsigConfirm').checked=false;
+    } else {
+      alerta.style.display='none';
+      $('mAsigConfirmBox').style.display='none';
+    }
     $('mAsignar').classList.add('on');
   },
   async confirmarAsignacion(){
     const serv=$('mAsigServicio').value.trim();
     if (!serv) return toast('Escribe el servicio o ruta', true);
-    const { error } = await Api.asignar(ctxAsignar, serv, $('mAsigZona').value, $('mAsigNotas').value.trim());
+    if (ctxAsignarBloqueado && !$('mAsigConfirm').checked)
+      return toast('Marca la casilla para confirmar el despacho pese a los documentos pendientes', true);
+    const notas = $('mAsigNotas').value.trim() + (ctxAsignarBloqueado?' [DESPACHADO CON DOCS PENDIENTES]':'');
+    const { error } = await Api.asignar(ctxAsignar, serv, $('mAsigZona').value, notas.trim());
     UI.cerrarModal('mAsignar');
     if (error) return toast(Api.friendly(error), true);
-    toast('Vehículo asignado ✓'); UI.loadProgramacion();
+    toast(ctxAsignarBloqueado?'Vehículo despachado (con docs pendientes) ⚠':'Vehículo asignado ✓');
+    UI.loadProgramacion();
   },
   async quitarAsignacion(id){
     const { error } = await Api.cancelarAsignacion(id);
@@ -504,7 +557,116 @@ const UI = {
     toast('Asignación retirada'); UI.loadProgramacion();
   },
 
-  // ══════════ JEFE: Equipo ══════════
+  // ══════════ ADMIN: Base de datos (cargue diario) ══════════
+  async loadAdminDatos(){
+    const [conds, vehs, vins, docsVeh, ultimo, hist] = await Promise.all([
+      Api.listConductores(), Api.listVehiculos(), Api.listVinculos(),
+      Api.docsPorVehiculo(), Api.ultimoCargue(), Api.listarCargues()
+    ]);
+    $('adKpiCond').textContent = conds.length;
+    $('adKpiVeh').textContent  = vehs.length;
+    $('adKpiVin').textContent  = vins.length;
+    const vencidos = docsVeh.reduce((s,d)=>s+(d.docs_vencidos||0),0);
+    $('adKpiVenc').textContent = vencidos;
+
+    UI._docsVeh = docsVeh.filter(d=>(d.docs_vencidos||0)>0 || (d.docs_sin_cargar||0)>0)
+      .sort((a,b)=>(b.docs_vencidos||0)-(a.docs_vencidos||0));
+    UI.filtrarDocs();
+
+    $('adHistorial').innerHTML = hist.length ? hist.map(c=>`
+      <div style="padding:7px 0;border-bottom:1px solid var(--line)">
+        <b>${new Date(c.created_at).toLocaleString('es-CO')}</b><br>
+        <span style="color:var(--muted)">${c.filas} filas · +${c.conductores_new} cond · +${c.vehiculos_new} veh · +${c.vinculos_new} vínculos</span>
+      </div>`).join('') : '<span style="color:var(--faint)">Aún no hay cargues.</span>';
+  },
+
+  filtrarDocs(){
+    const q = ($('adBuscarPlaca').value||'').toUpperCase().trim();
+    const rows = (UI._docsVeh||[]).filter(d=>!q || (d.placa||'').includes(q));
+    $('tblDocsVeh').querySelector('tbody').innerHTML = rows.length ? rows.slice(0,300).map(d=>`
+      <tr><td><span class="placa sm">${d.placa}</span></td>
+      <td style="color:${d.docs_vencidos?'var(--red)':'inherit'}">${d.docs_vencidos||0}</td>
+      <td style="color:${d.docs_sin_cargar?'var(--amber)':'inherit'}">${d.docs_sin_cargar||0}</td>
+      <td style="color:var(--green)">${d.docs_vigentes||0}</td>
+      <td>${d.proximo_vencimiento?new Date(d.proximo_vencimiento).toLocaleDateString('es-CO'):'—'}</td></tr>`).join('')
+      : '<tr><td colspan="5" style="color:var(--green)">✓ Sin documentos vencidos ni pendientes.</td></tr>';
+  },
+
+  async importarExcel(){
+    const file = $('adFile').files[0];
+    if (!file) return toast('Selecciona primero el archivo Excel', true);
+    const st=$('adImportStatus'), btn=$('adBtnImport'), res=$('adResultado');
+    st.innerHTML='<span class="spin"></span>Leyendo archivo…'; btn.disabled=true; res.style.display='none';
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { cellDates:true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval:'' });
+      if (!raw.length){ st.textContent=''; btn.disabled=false; return toast('El archivo está vacío', true); }
+
+      // Mapear columnas del formato DocumentosAfiliados
+      const pick = (r,keys)=>{ for(const k of keys){ if(r[k]!=null && r[k]!=='') return r[k]; } return ''; };
+      const fmtDate = v => { if(!v) return null; const d=(v instanceof Date)?v:new Date(v); return isNaN(d)?null:d.toISOString().slice(0,10); };
+      const fmtTs   = v => { if(!v) return null; const d=(v instanceof Date)?v:new Date(v); return isNaN(d)?null:d.toISOString(); };
+
+      const rows = raw.map(r=>({
+        placa: String(pick(r,['Placa','placa'])).trim(),
+        documento_persona: String(pick(r,['Nro Identificacion','Nro Identificación','Documento','documento_persona'])).trim(),
+        nombre_persona: String(pick(r,['Nombre','nombre_persona'])).trim(),
+        tipo_titular: String(pick(r,['Tipo','tipo_titular'])).trim(),
+        nombre_documento: String(pick(r,['Nombre Documento','nombre_documento'])).trim(),
+        inicio_vigencia: fmtDate(pick(r,['Inicio Vigencia','inicio_vigencia'])),
+        vigente_hasta: fmtDate(pick(r,['Vigente Hasta','vigente_hasta'])),
+        estado: String(pick(r,['Estado','estado'])).trim(),
+        fecha_cargue: fmtTs(pick(r,['Fecha - Hora Cargue','Fecha Hora Cargue','fecha_cargue'])),
+        usuario_cargue: String(pick(r,['Usuario','usuario_cargue'])).trim(),
+        empresa: String(pick(r,['Empresa','empresa'])).trim()
+      }));
+
+      st.innerHTML=`<span class="spin"></span>Cargando ${rows.length} filas a Supabase…`;
+      const r = await Api.importarCargue(file.name, rows);
+      st.textContent=''; btn.disabled=false;
+      if (r.error) return toast('Error: '+r.error, true);
+
+      res.style.display='block';
+      res.innerHTML = `✅ <b>Cargue exitoso</b> · ${r.filas} filas procesadas<br>
+        Nuevos: <b>${r.conductores_nuevos}</b> conductores, <b>${r.vehiculos_nuevos}</b> vehículos,
+        <b>${r.vinculos_nuevos}</b> vínculos · <b>${r.documentos}</b> documentos actualizados`;
+      toast('Base de datos actualizada ✓');
+      $('adFile').value='';
+      UI.loadAdminDatos();
+    } catch(e){
+      st.textContent=''; btn.disabled=false;
+      toast('Error al leer el Excel: '+e.message, true);
+    }
+  },
+
+  async exportarExcel(){
+    const st=$('adExportStatus');
+    st.innerHTML='<span class="spin"></span>Preparando…';
+    try {
+      const docs = await Api.todosLosDocumentos();
+      if (!docs.length){ st.textContent=''; return toast('No hay documentos para exportar', true); }
+      const rows = docs.map(d=>({
+        'Empresa': d.empresa||'', 'Placa': d.placa||'', 'Tipo': d.tipo_titular||'',
+        'Nombre': d.nombre_persona||'', 'Nro Identificacion': d.documento_persona||'',
+        'Nombre Documento': d.nombre_documento||'',
+        'Inicio Vigencia': d.inicio_vigencia||'', 'Vigente Hasta': d.vigente_hasta||'',
+        'Estado': d.estado||'',
+        'Fecha - Hora Cargue': d.fecha_cargue?new Date(d.fecha_cargue).toLocaleString('es-CO'):'',
+        'Usuario': d.usuario_cargue||''
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Documentos');
+      const hoy = new Date().toISOString().slice(0,10).replace(/-/g,'_');
+      XLSX.writeFile(wb, `DocumentosAfiliados_${hoy}.xlsx`);
+      st.textContent=''; toast('Excel descargado ✓');
+    } catch(e){ st.textContent=''; toast('Error al exportar: '+e.message, true); }
+  },
+
+  // ══════════ JEFE/ADMIN: Equipo ══════════
   async loadEquipo(){
     const tb=$('tblEquipo').querySelector('tbody');
     tb.innerHTML='<tr><td colspan="4" class="loading"><span class="spin"></span>Cargando…</td></tr>';
@@ -521,6 +683,7 @@ const UI = {
             <option value="coordinador" ${e.role==='coordinador'?'selected':''}>Coordinador</option>
             <option value="analista" ${e.role==='analista'?'selected':''}>Analista</option>
             <option value="jefe" ${e.role==='jefe'?'selected':''}>Jefe</option>
+            <option value="admin" ${e.role==='admin'?'selected':''}>Administrador</option>
           </select>
         </td>
         <td style="white-space:nowrap">
@@ -583,6 +746,16 @@ const UI = {
     $('rpKpiAsig').textContent=asig.length;
     $('rpKpiSin').textContent=sin.length;
     $('rpKpiCob').textContent=(rows.length?Math.round(asig.length/rows.length*100):0)+'%';
+
+    // Documentos críticos
+    const conDocs = rows.filter(r=>(r.docs_criticos_pendientes||0)>0);
+    $('rpKpiDocs').textContent = conDocs.length;
+    $('tblDocsCriticos').querySelector('tbody').innerHTML = conDocs.length ? conDocs.map(r=>`
+      <tr><td><span class="placa sm">${r.placa}</span></td><td>${r.conductor_nombre}</td>
+      <td>${fmtFecha(r.inicio)}</td>
+      <td>${r.asignacion_id?'<span class="badge b-asignada">Despachada</span>':estadoBadge(r)}</td>
+      <td style="color:var(--red);font-size:12.5px">${r.detalle_criticos||'—'}</td></tr>`).join('')
+      : '<tr><td colspan="5" style="color:var(--green)">✓ Ningún vehículo del rango tiene documentos críticos pendientes.</td></tr>';
 
     // — Por franja horaria —
     const fAsig=Array(24).fill(0), fSin=Array(24).fill(0);
