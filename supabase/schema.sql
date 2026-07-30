@@ -54,6 +54,17 @@ create table if not exists public.conductores (
   telefono    text default '',
   localidad   text default '',
   empresa     text default '',               -- empresa afiliadora (del cargue)
+  -- Datos extendidos (del cargue Conductores_Inf_Gral)
+  apellidos       text default '',
+  correo          text default '',
+  licencia_num    text default '',
+  licencia_cat    text default '',
+  licencia_vence  date,
+  eps             text default '',
+  arl             text default '',
+  tipo_sangre     text default '',
+  tel_emergencia  text default '',
+  cod_interno     text default '',
   activo      boolean not null default true,
   created_at  timestamptz not null default now()
 );
@@ -103,6 +114,79 @@ create table if not exists public.cargues (
   cargado_por      uuid references public.profiles(id),
   created_at       timestamptz not null default now()
 );
+
+-- Configuración global de la app (clave-valor). Ej: hora del recordatorio de cargue.
+create table if not exists public.config (
+  clave       text primary key,
+  valor       text,
+  updated_by  uuid references public.profiles(id),
+  updated_at  timestamptz not null default now()
+);
+
+-- Cartera de rodamientos (estado de pagos por placa) — foto diaria
+create table if not exists public.cartera (
+  id                  uuid primary key default gen_random_uuid(),
+  placa               text,
+  num_interno         text,
+  identificacion      text,
+  nombre_afiliado     text,
+  celular             text,
+  correo              text,
+  empresa             text,
+  clase_vehiculo      text,
+  empresa_convenio    text,
+  ultimo_periodo_pago text,
+  periodos_vencidos   integer default 0,
+  valor_vencido       numeric default 0,
+  estado              text,
+  importado_at        timestamptz not null default now()
+);
+create index if not exists idx_cartera_placa on public.cartera (placa);
+create index if not exists idx_cartera_venc on public.cartera (periodos_vencidos);
+
+-- Consolidado de flota (ficha completa del vehículo) — foto diaria
+create table if not exists public.consolidado (
+  id                 uuid primary key default gen_random_uuid(),
+  placa              text,
+  num_interno        text,
+  nombre_propietario text,
+  documento          text,
+  telefono           text,
+  celular            text,
+  email              text,
+  ciudad             text,
+  tar_operacion      text,
+  vence_operacion    date,
+  marca              text,
+  clase              text,
+  combustible        text,
+  carroceria         text,
+  pasajeros          text,
+  modelo             text,
+  cilindraje         text,
+  chasis             text,
+  motor              text,
+  soat_num           text,
+  soat_entidad       text,
+  soat_fecha         date,
+  seguros_entidad    text,
+  seguros_fecha      date,
+  tecmecanica_fecha  date,
+  preventiva_fecha   date,
+  tipo_convenio      text,
+  empresa_convenio   text,
+  estado             text,
+  estado_vehiculo    text,
+  empresa            text,
+  importado_at       timestamptz not null default now()
+);
+create index if not exists idx_consolidado_placa on public.consolidado (placa);
+
+insert into public.config (clave, valor) values
+  ('recordatorio_cargue_hora', '07:00'),
+  ('recordatorio_cargue_activo', 'true'),
+  ('portal_url', '')
+on conflict (clave) do nothing;
 
 -- Vínculo conductor ⟷ vehículo (quién puede operar qué)
 create table if not exists public.conductor_vehiculo (
@@ -200,6 +284,19 @@ language sql stable security definer set search_path = public as $$
   select coalesce(public.get_my_role() = 'admin', false);
 $$;
 
+-- ¿El usuario actual (conductor) está vinculado a este vehículo?
+-- security definer: evita que la RLS de conductor_vehiculo interfiera dentro
+-- de la política de vehiculos.
+create or replace function public.conductor_ve_vehiculo(p_vehiculo uuid)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.conductor_vehiculo cv
+    where cv.vehiculo_id = p_vehiculo
+      and cv.conductor_id = public.get_my_conductor_id()
+  );
+$$;
+
 -- Importación masiva del cargue diario de documentos/afiliados.
 -- Recibe un JSON con las filas del Excel ya normalizadas por el navegador.
 -- Deriva conductores, vehículos, vínculos y documentos; NO borra disponibilidades.
@@ -293,6 +390,126 @@ begin
     'conductores_nuevos', v_cond_new, 'vehiculos_nuevos', v_veh_new,
     'vinculos_nuevos', v_vin_new, 'documentos', v_doc
   );
+end $$;
+
+-- ── Importar información general de conductores (enriquecer + crear) ──
+create or replace function public.importar_conductores(p_archivo text, p_rows jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  r jsonb; v_rol rol_usuario := public.get_my_role();
+  v_new int := 0; v_upd int := 0; v_vin int := 0;
+  v_cid uuid; v_vid uuid; v_doc text; v_placa text; v_existed boolean; v_i int;
+begin
+  if v_rol not in ('admin','jefe') then
+    raise exception 'Solo admin o jefe pueden importar conductores.';
+  end if;
+
+  for r in select * from jsonb_array_elements(p_rows)
+  loop
+    v_doc := trim(coalesce(r->>'documento',''));
+    if v_doc = '' then continue; end if;
+
+    select id into v_cid from public.conductores where documento = v_doc;
+    if v_cid is null then
+      insert into public.conductores (nombre, documento, telefono, correo, apellidos,
+        licencia_num, licencia_cat, licencia_vence, eps, arl, tipo_sangre, tel_emergencia, cod_interno)
+      values (
+        trim(coalesce(r->>'nombres','')||' '||coalesce(r->>'apellidos','')), v_doc,
+        coalesce(r->>'celular',''), coalesce(r->>'correo',''), coalesce(r->>'apellidos',''),
+        coalesce(r->>'licencia_num',''), coalesce(r->>'licencia_cat',''),
+        (nullif(r->>'licencia_vence',''))::date,
+        coalesce(r->>'eps',''), coalesce(r->>'arl',''), coalesce(r->>'tipo_sangre',''),
+        coalesce(r->>'tel_emergencia',''), coalesce(r->>'cod_interno',''))
+      returning id into v_cid;
+      v_new := v_new + 1;
+    else
+      update public.conductores set
+        nombre = coalesce(nullif(trim(coalesce(r->>'nombres','')||' '||coalesce(r->>'apellidos','')),''), nombre),
+        telefono = coalesce(nullif(r->>'celular',''), telefono),
+        correo = coalesce(nullif(r->>'correo',''), correo),
+        apellidos = coalesce(nullif(r->>'apellidos',''), apellidos),
+        licencia_num = coalesce(nullif(r->>'licencia_num',''), licencia_num),
+        licencia_cat = coalesce(nullif(r->>'licencia_cat',''), licencia_cat),
+        licencia_vence = coalesce((nullif(r->>'licencia_vence',''))::date, licencia_vence),
+        eps = coalesce(nullif(r->>'eps',''), eps),
+        arl = coalesce(nullif(r->>'arl',''), arl),
+        tipo_sangre = coalesce(nullif(r->>'tipo_sangre',''), tipo_sangre),
+        tel_emergencia = coalesce(nullif(r->>'tel_emergencia',''), tel_emergencia),
+        cod_interno = coalesce(nullif(r->>'cod_interno',''), cod_interno)
+      where id = v_cid;
+      v_upd := v_upd + 1;
+    end if;
+
+    -- Vincular hasta 5 placas
+    for v_i in 1..5 loop
+      v_placa := upper(trim(coalesce(r->>('placa'||v_i), '')));
+      if v_placa <> '' then
+        select id into v_vid from public.vehiculos where placa = v_placa;
+        if v_vid is null then
+          insert into public.vehiculos (placa) values (v_placa) returning id into v_vid;
+        end if;
+        select exists(select 1 from public.conductor_vehiculo
+                      where conductor_id=v_cid and vehiculo_id=v_vid) into v_existed;
+        if not v_existed then
+          insert into public.conductor_vehiculo (conductor_id, vehiculo_id, asignado_por)
+          values (v_cid, v_vid, auth.uid());
+          v_vin := v_vin + 1;
+        end if;
+      end if;
+    end loop;
+  end loop;
+
+  return jsonb_build_object('ok',true,'nuevos',v_new,'actualizados',v_upd,'vinculos_nuevos',v_vin);
+end $$;
+
+-- ── Importar cartera (foto diaria) ──
+create or replace function public.importar_cartera(p_archivo text, p_rows jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb; v_rol rol_usuario := public.get_my_role(); v_n int := 0;
+begin
+  if v_rol not in ('admin','jefe') then raise exception 'Solo admin o jefe pueden importar cartera.'; end if;
+  truncate table public.cartera;
+  for r in select * from jsonb_array_elements(p_rows) loop
+    insert into public.cartera (placa, num_interno, identificacion, nombre_afiliado, celular,
+      correo, empresa, clase_vehiculo, empresa_convenio, ultimo_periodo_pago,
+      periodos_vencidos, valor_vencido, estado)
+    values (upper(trim(coalesce(r->>'placa',''))), r->>'num_interno', r->>'identificacion',
+      r->>'nombre_afiliado', r->>'celular', r->>'correo', r->>'empresa', r->>'clase_vehiculo',
+      r->>'empresa_convenio', r->>'ultimo_periodo_pago',
+      coalesce((nullif(r->>'periodos_vencidos',''))::numeric::int,0),
+      coalesce((nullif(r->>'valor_vencido',''))::numeric,0), r->>'estado');
+    v_n := v_n + 1;
+  end loop;
+  return jsonb_build_object('ok',true,'filas',v_n);
+end $$;
+
+-- ── Importar consolidado de flota (foto diaria) ──
+create or replace function public.importar_consolidado(p_archivo text, p_rows jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb; v_rol rol_usuario := public.get_my_role(); v_n int := 0;
+begin
+  if v_rol not in ('admin','jefe') then raise exception 'Solo admin o jefe pueden importar el consolidado.'; end if;
+  truncate table public.consolidado;
+  for r in select * from jsonb_array_elements(p_rows) loop
+    insert into public.consolidado (placa, num_interno, nombre_propietario, documento, telefono,
+      celular, email, ciudad, tar_operacion, vence_operacion, marca, clase, combustible, carroceria,
+      pasajeros, modelo, cilindraje, chasis, motor, soat_num, soat_entidad, soat_fecha,
+      seguros_entidad, seguros_fecha, tecmecanica_fecha, preventiva_fecha, tipo_convenio,
+      empresa_convenio, estado, estado_vehiculo, empresa)
+    values (upper(trim(coalesce(r->>'placa',''))), r->>'num_interno', r->>'nombre_propietario',
+      r->>'documento', r->>'telefono', r->>'celular', r->>'email', r->>'ciudad', r->>'tar_operacion',
+      (nullif(r->>'vence_operacion',''))::date, r->>'marca', r->>'clase', r->>'combustible',
+      r->>'carroceria', r->>'pasajeros', r->>'modelo', r->>'cilindraje', r->>'chasis', r->>'motor',
+      r->>'soat_num', r->>'soat_entidad', (nullif(r->>'soat_fecha',''))::date,
+      r->>'seguros_entidad', (nullif(r->>'seguros_fecha',''))::date,
+      (nullif(r->>'tecmecanica_fecha',''))::date, (nullif(r->>'preventiva_fecha',''))::date,
+      r->>'tipo_convenio', r->>'empresa_convenio', r->>'estado', r->>'estado_vehiculo', r->>'empresa');
+    v_n := v_n + 1;
+  end loop;
+  return jsonb_build_object('ok',true,'filas',v_n);
 end $$;
 
 -- La disponibilidad solo es válida si el conductor está vinculado al vehículo
@@ -427,6 +644,17 @@ left join public.documentos d on upper(d.placa) = v.placa
 group by v.id, v.placa;
 
 
+-- Cartera por vehículo (para alertar antes de despachar)
+create or replace view public.v_cartera_vehiculo
+with (security_invoker = true) as
+select
+  upper(c.placa) as placa,
+  max(c.periodos_vencidos) as periodos_vencidos,
+  sum(c.valor_vencido)     as valor_vencido,
+  bool_or(c.periodos_vencidos > 0) as tiene_mora
+from public.cartera c
+group by upper(c.placa);
+
 create or replace view public.v_disponibilidades
 with (security_invoker = true) as
 select
@@ -443,13 +671,16 @@ select
   coalesce(dv.criticos_vencidos,0)   as docs_criticos_vencidos,
   coalesce(dv.docs_vencidos,0)       as docs_vencidos,
   coalesce(dv.docs_sin_cargar,0)     as docs_sin_cargar,
-  dv.detalle_criticos
+  dv.detalle_criticos,
+  coalesce(cv.periodos_vencidos,0)   as cartera_periodos_vencidos,
+  coalesce(cv.valor_vencido,0)       as cartera_valor_vencido
 from public.disponibilidades d
 join public.conductores c on c.id = d.conductor_id
 join public.vehiculos   v on v.id = d.vehiculo_id
 left join public.asignaciones a
   on a.disponibilidad_id = d.id and a.estado <> 'cancelada'
-left join public.v_docs_vehiculo dv on dv.vehiculo_id = v.id;
+left join public.v_docs_vehiculo dv on dv.vehiculo_id = v.id
+left join public.v_cartera_vehiculo cv on cv.placa = v.placa;
 
 -- Vínculos con nombres, para la UI
 create or replace view public.v_vinculos
@@ -473,6 +704,20 @@ join public.conductores c on c.id = u.conductor_id
 order by u.vehiculo_id, u.reportada_at desc;
 
 -- ------------------------------------------------------------
+-- 4b. PERMISOS (GRANT) para roles de Supabase
+--     Las vistas con security_invoker necesitan GRANT explícito,
+--     y la seguridad real la imponen las políticas RLS de abajo.
+-- ------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant select on all tables in schema public to anon;
+-- Las vistas cuentan como "tables" en el grant anterior, pero por si acaso:
+grant select on public.v_disponibilidades, public.v_vinculos,
+                public.v_ultima_ubicacion, public.v_docs_vehiculo,
+                public.v_cartera_vehiculo
+  to anon, authenticated;
+
+-- ------------------------------------------------------------
 -- 5. ROW LEVEL SECURITY
 -- ------------------------------------------------------------
 alter table public.profiles           enable row level security;
@@ -484,6 +729,21 @@ alter table public.asignaciones       enable row level security;
 alter table public.ubicaciones        enable row level security;
 alter table public.documentos         enable row level security;
 alter table public.cargues            enable row level security;
+alter table public.cartera            enable row level security;
+alter table public.consolidado        enable row level security;
+
+-- cartera y consolidado: staff lee, admin/jefe gestionan (import por RPC)
+drop policy if exists "staff lee cartera" on public.cartera;
+create policy "staff lee cartera" on public.cartera for select using (public.is_staff());
+drop policy if exists "admin gestiona cartera" on public.cartera;
+create policy "admin gestiona cartera" on public.cartera
+  for all using (public.get_my_role() in ('admin','jefe')) with check (public.get_my_role() in ('admin','jefe'));
+
+drop policy if exists "staff lee consolidado" on public.consolidado;
+create policy "staff lee consolidado" on public.consolidado for select using (public.is_staff());
+drop policy if exists "admin gestiona consolidado" on public.consolidado;
+create policy "admin gestiona consolidado" on public.consolidado
+  for all using (public.get_my_role() in ('admin','jefe')) with check (public.get_my_role() in ('admin','jefe'));
 
 -- documentos: staff lee, admin/jefe gestionan (el import va por RPC security definer)
 drop policy if exists "staff lee documentos" on public.documentos;
@@ -502,6 +762,16 @@ create policy "staff lee cargues" on public.cargues
 drop policy if exists "admin registra cargues" on public.cargues;
 create policy "admin registra cargues" on public.cargues
   for insert with check (public.get_my_role() in ('admin', 'jefe'));
+
+-- config: staff lee, admin/jefe gestionan
+alter table public.config enable row level security;
+drop policy if exists "staff lee config" on public.config;
+create policy "staff lee config" on public.config
+  for select using (public.is_staff());
+
+drop policy if exists "admin gestiona config" on public.config;
+create policy "admin gestiona config" on public.config
+  for all using (public.get_my_role() in ('admin','jefe')) with check (public.get_my_role() in ('admin','jefe'));
 
 -- profiles
 drop policy if exists "perfil propio o staff lee" on public.profiles;
@@ -534,8 +804,7 @@ drop policy if exists "ve vehiculos: staff o conductor vinculado" on public.vehi
 create policy "ve vehiculos: staff o conductor vinculado" on public.vehiculos
   for select using (
     public.is_staff()
-    or exists (select 1 from public.conductor_vehiculo cv
-               where cv.vehiculo_id = id and cv.conductor_id = public.get_my_conductor_id())
+    or public.conductor_ve_vehiculo(id)
   );
 
 drop policy if exists "coordinador o jefe crea vehiculo" on public.vehiculos;

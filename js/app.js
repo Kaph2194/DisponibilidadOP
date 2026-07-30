@@ -66,6 +66,12 @@ function docBadge(r){
   const cls = a.nivel==='block'?'b-cancelada':(a.nivel==='warn'?'b-pendiente':'b-validada');
   return `<span class="badge ${cls}" title="${a.detalle}">${a.texto}</span>`;
 }
+function carteraAlerta(r){
+  const p = r.cartera_periodos_vencidos||0;
+  const v = r.cartera_valor_vencido||0;
+  if (p>0) return { hay:true, texto:`💳 Cartera: ${p} período(s) vencido(s) · $${Number(v).toLocaleString('es-CO')}` };
+  return { hay:false, texto:'' };
+}
 function tsLocal(fecha, hhmm){ return new Date(fecha+'T'+hhmm+':00').toISOString(); }
 function rangoDia(fecha){
   const a=new Date(fecha+'T00:00:00');
@@ -150,6 +156,8 @@ const NAV = {
     ['p-o-programar','🗓','Programación'],
     ['p-s-flota','🚗','Flota'],
     ['p-ad-datos','🗄','Base de datos'],
+    ['p-ad-cartera','💳','Cartera'],
+    ['p-ad-consolidado','📋','Consolidado'],
     ['p-j-equipo','👥','Equipo']
   ]
 };
@@ -164,7 +172,9 @@ const PAGE_LOADERS = {
   'p-o-programar': () => UI.loadProgramacion(),
   'p-j-reportes':  () => UI.loadReportes(),
   'p-j-equipo':    () => UI.loadEquipo(),
-  'p-ad-datos':    () => UI.loadAdminDatos()
+  'p-ad-datos':    () => UI.loadAdminDatos(),
+  'p-ad-cartera':  () => UI.loadCartera(),
+  'p-ad-consolidado': () => UI.loadConsolidado()
 };
 
 function buildNav(role){
@@ -241,6 +251,34 @@ const UI = {
     }
 
     UI.go(NAV[role][0][0], null);
+
+    // Recordatorio de cargue diario (para admin/jefe)
+    if (['admin','jefe'].includes(role)) UI.chequearRecordatorioCargue();
+  },
+
+  async chequearRecordatorioCargue(){
+    try {
+      const cfg = await Api.getConfig();
+      if (cfg.recordatorio_cargue_activo !== 'true') return;
+      const ultimo = await Api.ultimoCargue();
+      const cargadoHoy = ultimo && new Date(ultimo.created_at).toDateString() === new Date().toDateString();
+      if (cargadoHoy) return;
+      // ¿Ya pasó la hora del recordatorio hoy?
+      const [hh,mm] = (cfg.recordatorio_cargue_hora||'07:00').split(':').map(Number);
+      const ahora = new Date();
+      const horaRec = new Date(); horaRec.setHours(hh, mm, 0, 0);
+      if (ahora >= horaRec){
+        const portal = cfg.portal_url;
+        toast('⏰ Recordatorio: falta el cargue de la base de conductores de hoy', false);
+        // Aviso persistente clickeable
+        setTimeout(()=>{
+          const t=$('toast');
+          t.style.display='block'; t.className='';
+          t.innerHTML = `⏰ Falta el cargue de hoy. <a href="#" onclick="UI.go('p-ad-datos');document.getElementById('toast').style.display='none';return false" style="color:var(--amber);text-decoration:underline">Ir a cargar →</a>`;
+          clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 9000);
+        }, 3500);
+      }
+    } catch(e){ /* silencioso */ }
   },
 
   go(pageId, btn){
@@ -592,11 +630,12 @@ const UI = {
       const al = docAlerta(r);
       const bloqueado = al.nivel==='block';
       const restringida = placaRestringida(r.placa, fechaSel);
-      return `<div class="item" style="${bloqueado?'border-color:var(--red);border-left:3px solid var(--red)':(restringida?'border-left:3px solid var(--amber)':'')}"><div class="info">
+      const cart = carteraAlerta(r);
+      return `<div class="item" style="${bloqueado?'border-color:var(--red);border-left:3px solid var(--red)':(restringida||cart.hay?'border-left:3px solid var(--amber)':'')}"><div class="info">
         <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}
           ${restringida?'<span class="badge b-pendiente" style="margin-left:6px">🚦 Pico y placa hoy</span>':''}</div>
         <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''} · Tel: ${r.telefono||'—'}</div>
-        <div style="margin-top:6px">${docBadge(r)}</div>
+        <div style="margin-top:6px">${docBadge(r)}${cart.hay?` <span class="badge b-cancelada" style="margin-left:4px">${cart.texto}</span>`:''}</div>
         ${bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
       </div>
       <div class="acts"><span class="badge b-sin">Sin asignar</span>
@@ -656,15 +695,41 @@ const UI = {
 
   // ══════════ ADMIN: Base de datos (cargue diario) ══════════
   async loadAdminDatos(){
-    const [conds, vehs, vins, docsVeh, ultimo, hist] = await Promise.all([
+    const [conds, vehs, vins, docsVeh, ultimo, hist, cfg] = await Promise.all([
       Api.listConductores(), Api.listVehiculos(), Api.listVinculos(),
-      Api.docsPorVehiculo(), Api.ultimoCargue(), Api.listarCargues()
+      Api.docsPorVehiculo(), Api.ultimoCargue(), Api.listarCargues(), Api.getConfig()
     ]);
     $('adKpiCond').textContent = conds.length;
     $('adKpiVeh').textContent  = vehs.length;
     $('adKpiVin').textContent  = vins.length;
     const vencidos = docsVeh.reduce((s,d)=>s+(d.docs_vencidos||0),0);
     $('adKpiVenc').textContent = vencidos;
+
+    UI._config = cfg;
+    // Cargar valores de configuración en el formulario
+    if ($('cfgHora'))   $('cfgHora').value   = cfg.recordatorio_cargue_hora || '07:00';
+    if ($('cfgActivo')) $('cfgActivo').value = cfg.recordatorio_cargue_activo || 'true';
+    if ($('cfgPortal')) $('cfgPortal').value = cfg.portal_url || '';
+    $('cfgAbrirPortal').style.display = cfg.portal_url ? '' : 'none';
+
+    // Banner de estado del cargue del día
+    const banner = $('adBannerDia');
+    const hoy = hoyISO();
+    const cargadoHoy = ultimo && new Date(ultimo.created_at).toDateString() === new Date().toDateString();
+    if (cargadoHoy){
+      banner.style.borderLeft='3px solid var(--green)';
+      banner.innerHTML = `<div><div style="font-family:var(--font-d);font-weight:700;font-size:17px;color:var(--green)">✓ Cargue de hoy realizado</div>
+        <div style="color:var(--muted);font-size:13px">Último: ${new Date(ultimo.created_at).toLocaleString('es-CO')} · ${ultimo.filas} filas · ${ultimo.archivo||''}</div></div>`;
+    } else {
+      banner.style.borderLeft='3px solid var(--amber)';
+      const portal = cfg.portal_url;
+      banner.innerHTML = `<div style="flex:1;min-width:220px"><div style="font-family:var(--font-d);font-weight:700;font-size:17px;color:var(--amber)">⏰ Cargue de hoy pendiente</div>
+        <div style="color:var(--muted);font-size:13px">${ultimo?('Último cargue: '+new Date(ultimo.created_at).toLocaleDateString('es-CO')):'Aún no se ha cargado ningún documento'}. Descarga el archivo del portal y súbelo abajo.</div></div>
+        <div style="display:flex;gap:8px">
+          ${portal?`<a class="btn btn-blue sm" style="width:auto;text-decoration:none" href="${portal}" target="_blank">1. Ir al portal ↗</a>`:''}
+          <button class="btn btn-amber sm" style="width:auto" onclick="document.getElementById('adFile').scrollIntoView({behavior:'smooth'});document.getElementById('adFile').click()">2. Subir archivo</button>
+        </div>`;
+    }
 
     UI._docsVeh = docsVeh.filter(d=>(d.docs_vencidos||0)>0 || (d.docs_sin_cargar||0)>0)
       .sort((a,b)=>(b.docs_vencidos||0)-(a.docs_vencidos||0));
@@ -675,6 +740,21 @@ const UI = {
         <b>${new Date(c.created_at).toLocaleString('es-CO')}</b><br>
         <span style="color:var(--muted)">${c.filas} filas · +${c.conductores_new} cond · +${c.vehiculos_new} veh · +${c.vinculos_new} vínculos</span>
       </div>`).join('') : '<span style="color:var(--faint)">Aún no hay cargues.</span>';
+  },
+
+  async guardarConfigCargue(){
+    const hora=$('cfgHora').value, activo=$('cfgActivo').value, portal=$('cfgPortal').value.trim();
+    const r1 = await Api.setConfig('recordatorio_cargue_hora', hora);
+    const r2 = await Api.setConfig('recordatorio_cargue_activo', activo);
+    const r3 = await Api.setConfig('portal_url', portal);
+    if (r1.error||r2.error||r3.error) return toast('Error al guardar: '+Api.friendly(r1.error||r2.error||r3.error), true);
+    toast('Configuración guardada ✓');
+    UI.loadAdminDatos();
+  },
+
+  abrirPortal(){
+    const url = (UI._config||{}).portal_url;
+    if (url) window.open(url, '_blank');
   },
 
   filtrarDocs(){
@@ -689,43 +769,101 @@ const UI = {
       : '<tr><td colspan="5" style="color:var(--green)">✓ Sin documentos vencidos ni pendientes.</td></tr>';
   },
 
+  // Helpers de lectura de Excel reutilizables
+  _leerExcel(file){
+    return file.arrayBuffer().then(buf=>{
+      const wb = XLSX.read(buf, { cellDates:true });
+      return { wb, ws: wb.Sheets[wb.SheetNames[0]] };
+    });
+  },
+  _fmtDate(v){ if(!v) return null; const d=(v instanceof Date)?v:new Date(v); return isNaN(d)?null:d.toISOString().slice(0,10); },
+  _fmtTs(v){ if(!v) return null; const d=(v instanceof Date)?v:new Date(v); return isNaN(d)?null:d.toISOString(); },
+  _pick(r,keys){ for(const k of keys){ if(r[k]!=null && r[k]!=='') return r[k]; } return ''; },
+  // Lee con detección de fila de encabezado (para archivos con título arriba)
+  _sheetJson(ws, headerKeywords){
+    let raw = XLSX.utils.sheet_to_json(ws, { defval:'' });
+    // Si la primera fila no tiene las columnas esperadas, buscar la fila de header
+    if (headerKeywords && raw.length){
+      const cols = Object.keys(raw[0]).join('|').toLowerCase();
+      const ok = headerKeywords.some(k=>cols.includes(k.toLowerCase()));
+      if (!ok){
+        // Buscar fila de encabezado usando array de arrays
+        const aoa = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+        let hrow = -1;
+        for (let i=0;i<Math.min(10,aoa.length);i++){
+          const line = aoa[i].join('|').toLowerCase();
+          if (headerKeywords.some(k=>line.includes(k.toLowerCase()))){ hrow=i; break; }
+        }
+        if (hrow>=0){
+          raw = XLSX.utils.sheet_to_json(ws, { defval:'', range: hrow });
+        }
+      }
+    }
+    return raw;
+  },
+
   async importarExcel(){
+    const tipo = $('adTipo').value;
     const file = $('adFile').files[0];
     if (!file) return toast('Selecciona primero el archivo Excel', true);
     const st=$('adImportStatus'), btn=$('adBtnImport'), res=$('adResultado');
     st.innerHTML='<span class="spin"></span>Leyendo archivo…'; btn.disabled=true; res.style.display='none';
 
     try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { cellDates:true });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(ws, { defval:'' });
-      if (!raw.length){ st.textContent=''; btn.disabled=false; return toast('El archivo está vacío', true); }
+      const { ws } = await UI._leerExcel(file);
 
-      // Mapear columnas del formato DocumentosAfiliados
-      const pick = (r,keys)=>{ for(const k of keys){ if(r[k]!=null && r[k]!=='') return r[k]; } return ''; };
-      const fmtDate = v => { if(!v) return null; const d=(v instanceof Date)?v:new Date(v); return isNaN(d)?null:d.toISOString().slice(0,10); };
-      const fmtTs   = v => { if(!v) return null; const d=(v instanceof Date)?v:new Date(v); return isNaN(d)?null:d.toISOString(); };
+      if (tipo === 'conductores'){
+        const raw = UI._sheetJson(ws, ['Documento','Nombres','Apellidos']);
+        const P = UI._pick;
+        const rows = raw.map(r=>({
+          documento: String(P(r,['Documento','documento'])).trim(),
+          nombres: String(P(r,['Nombres','nombres'])).trim(),
+          apellidos: String(P(r,['Apellidos','apellidos'])).trim(),
+          celular: String(P(r,['Celular','celular','Telefono'])).trim(),
+          correo: String(P(r,['Correo Electronico','Correo Electrónico','Correo','correo'])).trim(),
+          licencia_num: String(P(r,['Numero Licencia','Número Licencia'])).trim(),
+          licencia_cat: String(P(r,['Categoria','Categoría'])).trim(),
+          licencia_vence: UI._fmtDate(P(r,['Fecha Licencia'])),
+          eps: String(P(r,['Nombre EPS','EPS'])).trim(),
+          arl: String(P(r,['Entidad ARL','ARL'])).trim(),
+          tipo_sangre: String(P(r,['Tipo Sangre'])).trim(),
+          tel_emergencia: String(P(r,['Tel Emergencia'])).trim(),
+          cod_interno: String(P(r,['Cod. Interno','Cod Interno'])).trim(),
+          placa1: String(P(r,['Placa #1'])).trim(), placa2: String(P(r,['Placa #2'])).trim(),
+          placa3: String(P(r,['Placa #3'])).trim(), placa4: String(P(r,['Placa #4'])).trim(),
+          placa5: String(P(r,['Placa #5'])).trim()
+        })).filter(x=>x.documento);
+        if (!rows.length){ st.textContent=''; btn.disabled=false; return toast('No se encontraron conductores. ¿El archivo es el correcto?', true); }
+        st.innerHTML=`<span class="spin"></span>Cargando ${rows.length} conductores…`;
+        const r = await Api.importarConductores(file.name, rows);
+        st.textContent=''; btn.disabled=false;
+        if (r.error) return toast('Error: '+r.error, true);
+        res.style.display='block';
+        res.innerHTML = `✅ <b>Conductores actualizados</b><br>Nuevos: <b>${r.nuevos}</b> · Actualizados: <b>${r.actualizados}</b> · Vínculos nuevos: <b>${r.vinculos_nuevos}</b>`;
+        toast('Conductores actualizados ✓'); $('adFile').value=''; UI.loadAdminDatos();
+        return;
+      }
 
+      // tipo documentos (por defecto)
+      const raw = UI._sheetJson(ws, ['Placa','Nombre Documento']);
+      const P = UI._pick;
       const rows = raw.map(r=>({
-        placa: String(pick(r,['Placa','placa'])).trim(),
-        documento_persona: String(pick(r,['Nro Identificacion','Nro Identificación','Documento','documento_persona'])).trim(),
-        nombre_persona: String(pick(r,['Nombre','nombre_persona'])).trim(),
-        tipo_titular: String(pick(r,['Tipo','tipo_titular'])).trim(),
-        nombre_documento: String(pick(r,['Nombre Documento','nombre_documento'])).trim(),
-        inicio_vigencia: fmtDate(pick(r,['Inicio Vigencia','inicio_vigencia'])),
-        vigente_hasta: fmtDate(pick(r,['Vigente Hasta','vigente_hasta'])),
-        estado: String(pick(r,['Estado','estado'])).trim(),
-        fecha_cargue: fmtTs(pick(r,['Fecha - Hora Cargue','Fecha Hora Cargue','fecha_cargue'])),
-        usuario_cargue: String(pick(r,['Usuario','usuario_cargue'])).trim(),
-        empresa: String(pick(r,['Empresa','empresa'])).trim()
+        placa: String(P(r,['Placa','placa'])).trim(),
+        documento_persona: String(P(r,['Nro Identificacion','Nro Identificación','Documento','documento_persona'])).trim(),
+        nombre_persona: String(P(r,['Nombre','nombre_persona'])).trim(),
+        tipo_titular: String(P(r,['Tipo','tipo_titular'])).trim(),
+        nombre_documento: String(P(r,['Nombre Documento','nombre_documento'])).trim(),
+        inicio_vigencia: UI._fmtDate(P(r,['Inicio Vigencia','inicio_vigencia'])),
+        vigente_hasta: UI._fmtDate(P(r,['Vigente Hasta','vigente_hasta'])),
+        estado: String(P(r,['Estado','estado'])).trim(),
+        fecha_cargue: UI._fmtTs(P(r,['Fecha - Hora Cargue','Fecha Hora Cargue','fecha_cargue'])),
+        usuario_cargue: String(P(r,['Usuario','usuario_cargue'])).trim(),
+        empresa: String(P(r,['Empresa','empresa'])).trim()
       }));
-
-      st.innerHTML=`<span class="spin"></span>Cargando ${rows.length} filas a Supabase…`;
+      st.innerHTML=`<span class="spin"></span>Cargando ${rows.length} filas…`;
       const r = await Api.importarCargue(file.name, rows);
       st.textContent=''; btn.disabled=false;
       if (r.error) return toast('Error: '+r.error, true);
-
       res.style.display='block';
       res.innerHTML = `✅ <b>Cargue exitoso</b> · ${r.filas} filas procesadas<br>
         Nuevos: <b>${r.conductores_nuevos}</b> conductores, <b>${r.vehiculos_nuevos}</b> vehículos,
@@ -737,6 +875,129 @@ const UI = {
       st.textContent=''; btn.disabled=false;
       toast('Error al leer el Excel: '+e.message, true);
     }
+  },
+
+  // ── Cartera ──
+  async loadCartera(){
+    UI._cartera = await Api.listarCartera(false);
+    const mora = UI._cartera.filter(c=>(c.periodos_vencidos||0)>0);
+    $('caKpiTotal').textContent = UI._cartera.length;
+    $('caKpiMora').textContent = mora.length;
+    const total = mora.reduce((s,c)=>s+(Number(c.valor_vencido)||0),0);
+    $('caKpiValor').textContent = '$'+total.toLocaleString('es-CO');
+    UI.renderCartera();
+  },
+  renderCartera(){
+    const q=($('caBuscar').value||'').toUpperCase().trim();
+    const solo=$('caFiltro').value==='mora';
+    let rows=(UI._cartera||[]);
+    if (solo) rows=rows.filter(c=>(c.periodos_vencidos||0)>0);
+    if (q) rows=rows.filter(c=>(c.placa||'').includes(q));
+    $('tblCartera').querySelector('tbody').innerHTML = rows.length ? rows.slice(0,500).map(c=>`
+      <tr><td><span class="placa sm">${c.placa}</span></td><td>${c.nombre_afiliado||'—'}</td>
+      <td>${c.empresa||'—'}</td><td style="font-size:12px">${c.ultimo_periodo_pago||'—'}</td>
+      <td style="color:${c.periodos_vencidos>0?'var(--red)':'inherit'};font-weight:${c.periodos_vencidos>0?'700':'400'}">${c.periodos_vencidos||0}</td>
+      <td style="color:${c.valor_vencido>0?'var(--red)':'inherit'}">$${Number(c.valor_vencido||0).toLocaleString('es-CO')}</td>
+      <td>${c.estado||'—'}</td></tr>`).join('')
+      : '<tr><td colspan="7" style="color:var(--faint)">Sin registros.</td></tr>';
+  },
+  async importarCartera(){
+    const file=$('caFile').files[0];
+    if (!file) return toast('Selecciona el archivo de cartera', true);
+    const st=$('caStatus'), btn=$('caBtn');
+    st.innerHTML='<span class="spin"></span>Leyendo…'; btn.disabled=true;
+    try {
+      const { ws } = await UI._leerExcel(file);
+      const raw = UI._sheetJson(ws, ['Placa','Periodos Vencidos','Nombre Afiliado']);
+      const P=UI._pick;
+      const rows = raw.map(r=>({
+        placa: String(P(r,['Placa','placa'])).trim(),
+        num_interno: String(P(r,['Num. Interno','Num Interno'])).trim(),
+        identificacion: String(P(r,['Identificacion','Identificación'])).trim(),
+        nombre_afiliado: String(P(r,['Nombre Afiliado'])).trim(),
+        celular: String(P(r,['Celular'])).trim(), correo: String(P(r,['Correo'])).trim(),
+        empresa: String(P(r,['Empresa'])).trim(), clase_vehiculo: String(P(r,['Clase Vehiculo','Clase Vehículo'])).trim(),
+        empresa_convenio: String(P(r,['Empresa Convenio'])).trim(),
+        ultimo_periodo_pago: String(P(r,['Ultimo Periodo Pago','Último Periodo Pago'])).trim(),
+        periodos_vencidos: String(P(r,['# Periodos Vencidos','Periodos Vencidos'])).trim(),
+        valor_vencido: String(P(r,['$ Periodos Vencidos','Valor Vencido'])).replace(/[^0-9.-]/g,'').trim(),
+        estado: String(P(r,['Estado'])).trim()
+      })).filter(x=>x.placa);
+      if (!rows.length){ st.textContent=''; btn.disabled=false; return toast('No se encontraron datos de cartera', true); }
+      st.innerHTML=`<span class="spin"></span>Cargando ${rows.length}…`;
+      const r = await Api.importarCartera(file.name, rows);
+      st.textContent=''; btn.disabled=false;
+      if (r.error) return toast('Error: '+r.error, true);
+      toast(`Cartera actualizada: ${r.filas} registros ✓`); $('caFile').value=''; UI.loadCartera();
+    } catch(e){ st.textContent=''; btn.disabled=false; toast('Error: '+e.message, true); }
+  },
+
+  // ── Consolidado ──
+  async loadConsolidado(){
+    UI._consolidado = await Api.listarConsolidado();
+    $('coKpiTotal').textContent = UI._consolidado.length;
+    const empresas = new Set(UI._consolidado.map(c=>c.empresa).filter(Boolean));
+    $('coKpiEmpresas').textContent = empresas.size;
+    const modelos = UI._consolidado.map(c=>parseInt(c.modelo)).filter(m=>!isNaN(m));
+    $('coKpiModelo').textContent = modelos.length ? Math.round(modelos.reduce((a,b)=>a+b,0)/modelos.length) : '—';
+    UI.renderConsolidado();
+  },
+  renderConsolidado(){
+    const q=($('coBuscar').value||'').toUpperCase().trim();
+    let rows=(UI._consolidado||[]);
+    if (q) rows=rows.filter(c=>(c.placa||'').includes(q)||(c.nombre_propietario||'').toUpperCase().includes(q));
+    $('tblConsolidado').querySelector('tbody').innerHTML = rows.length ? rows.slice(0,500).map(c=>`
+      <tr><td><span class="placa sm">${c.placa}</span></td><td>${c.num_interno||'—'}</td>
+      <td style="font-size:12px">${c.nombre_propietario||'—'}</td><td>${c.marca||'—'}</td>
+      <td>${c.clase||'—'}</td><td>${c.modelo||'—'}</td>
+      <td>${c.soat_fecha?new Date(c.soat_fecha).toLocaleDateString('es-CO'):'—'}</td>
+      <td>${c.tecmecanica_fecha?new Date(c.tecmecanica_fecha).toLocaleDateString('es-CO'):'—'}</td>
+      <td style="font-size:12px">${c.empresa||'—'}</td></tr>`).join('')
+      : '<tr><td colspan="9" style="color:var(--faint)">Sin registros.</td></tr>';
+  },
+  async importarConsolidado(){
+    const file=$('coFile').files[0];
+    if (!file) return toast('Selecciona el archivo consolidado', true);
+    const st=$('coStatus'), btn=$('coBtn');
+    st.innerHTML='<span class="spin"></span>Leyendo…'; btn.disabled=true;
+    try {
+      const { ws } = await UI._leerExcel(file);
+      const raw = UI._sheetJson(ws, ['Placa','Marca Vehículo','Nombre Propietario']);
+      const P=UI._pick, D=UI._fmtDate;
+      const rows = raw.map(r=>({
+        placa: String(P(r,['Placa'])).trim(), num_interno: String(P(r,['No Interno','No. Interno'])).trim(),
+        nombre_propietario: String(P(r,['Nombre Propietario'])).trim(), documento: String(P(r,['Documento'])).trim(),
+        telefono: String(P(r,['Teléfono','Telefono'])).trim(), celular: String(P(r,['Celular'])).trim(),
+        email: String(P(r,['Email'])).trim(), ciudad: String(P(r,['Ciudad Vehiculo','Ciudad Vehículo'])).trim(),
+        tar_operacion: String(P(r,['Tar. Operacion #','Tar. Operación #'])).trim(),
+        vence_operacion: D(P(r,['Vence T. Operacion','Vence T. Operación'])),
+        marca: String(P(r,['Marca Vehículo','Marca Vehiculo'])).trim(), clase: String(P(r,['Clase Vehículo','Clase Vehiculo'])).trim(),
+        combustible: String(P(r,['Tipo Combustible'])).trim(), carroceria: String(P(r,['Tipo Carrocería','Tipo Carroceria'])).trim(),
+        pasajeros: String(P(r,['Pasajeros'])).trim(), modelo: String(P(r,['Modelo'])).trim(),
+        cilindraje: String(P(r,['Cilindraje'])).trim(), chasis: String(P(r,['Chasis'])).trim(), motor: String(P(r,['Motor'])).trim(),
+        soat_num: String(P(r,['No. SOAT','No SOAT'])).trim(), soat_entidad: String(P(r,['Entidad Soat','Entidad SOAT'])).trim(),
+        soat_fecha: D(P(r,['Fecha SOAT'])), seguros_entidad: String(P(r,['Entidad Seguros'])).trim(),
+        seguros_fecha: D(P(r,['Fecha Seguros'])), tecmecanica_fecha: D(P(r,['Fecha TecMecanica','Fecha Tecmecanica'])),
+        preventiva_fecha: D(P(r,['Fecha Preventiva'])), tipo_convenio: String(P(r,['Tipo Convenio'])).trim(),
+        empresa_convenio: String(P(r,['Empresa Convenio'])).trim(), estado: String(P(r,['Estado'])).trim(),
+        estado_vehiculo: String(P(r,['Estado Vehículo','Estado Vehiculo'])).trim(), empresa: String(P(r,['Empresa'])).trim()
+      })).filter(x=>x.placa);
+      if (!rows.length){ st.textContent=''; btn.disabled=false; return toast('No se encontraron vehículos', true); }
+      st.innerHTML=`<span class="spin"></span>Cargando ${rows.length}…`;
+      const r = await Api.importarConsolidado(file.name, rows);
+      st.textContent=''; btn.disabled=false;
+      if (r.error) return toast('Error: '+r.error, true);
+      toast(`Consolidado actualizado: ${r.filas} vehículos ✓`); $('coFile').value=''; UI.loadConsolidado();
+    } catch(e){ st.textContent=''; btn.disabled=false; toast('Error: '+e.message, true); }
+  },
+  async exportarConsolidado(){
+    const rows = UI._consolidado||[];
+    if (!rows.length) return toast('No hay datos para exportar', true);
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Consolidado');
+    XLSX.writeFile(wb, `Consolidado_${hoyISO().replace(/-/g,'_')}.xlsx`);
+    toast('Excel descargado ✓');
   },
 
   async exportarExcel(){

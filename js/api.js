@@ -266,6 +266,43 @@ const Api = {
     return data;
   },
 
+  async importarConductores(archivo, rows) {
+    const { data, error } = await sb.rpc('importar_conductores', { p_archivo: archivo, p_rows: rows });
+    if (error) return { error: error.message };
+    return data;
+  },
+
+  async importarCartera(archivo, rows) {
+    const { data, error } = await sb.rpc('importar_cartera', { p_archivo: archivo, p_rows: rows });
+    if (error) return { error: error.message };
+    return data;
+  },
+
+  async importarConsolidado(archivo, rows) {
+    const { data, error } = await sb.rpc('importar_consolidado', { p_archivo: archivo, p_rows: rows });
+    if (error) return { error: error.message };
+    return data;
+  },
+
+  async listarCartera(soloMora) {
+    let q = sb.from('cartera').select('*').order('periodos_vencidos', { ascending: false });
+    if (soloMora) q = q.gt('periodos_vencidos', 0);
+    const { data, error } = await q.limit(2000);
+    return error ? [] : data;
+  },
+
+  async listarConsolidado() {
+    const PAGE=1000; let from=0, all=[];
+    while(true){
+      const { data, error } = await sb.from('consolidado').select('*').order('placa').range(from, from+PAGE-1);
+      if (error || !data || !data.length) break;
+      all = all.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  },
+
   async ultimoCargue() {
     const { data } = await sb.from('cargues').select('*')
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -295,5 +332,17 @@ const Api = {
   async docsPorVehiculo() {
     const { data, error } = await sb.from('v_docs_vehiculo').select('*');
     return error ? [] : data;
+  },
+
+  // ── Configuración (recordatorio de cargue, etc.) ─────────
+  async getConfig() {
+    const { data, error } = await sb.from('config').select('*');
+    if (error) return {};
+    const o = {}; (data||[]).forEach(r=>o[r.clave]=r.valor); return o;
+  },
+
+  async setConfig(clave, valor) {
+    const me = await this.getSession();
+    return sb.from('config').upsert({ clave, valor, updated_by: me?.user?.id, updated_at: new Date().toISOString() });
   }
 };

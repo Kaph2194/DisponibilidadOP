@@ -365,6 +365,8 @@ tr:last-child td{border-bottom:none}
     <section class="page" id="p-ad-datos">
       <div class="page-h"><div><h2>Base de datos de conductores</h2><div class="sub">Cargue diario del documento de afiliados y documentos</div></div></div>
 
+      <div id="adBannerDia" class="card" style="margin-bottom:18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap"></div>
+
       <div class="grid g4" style="margin-bottom:18px">
         <div class="card kpi"><div class="v" id="adKpiCond">0</div><div class="l">Conductores</div></div>
         <div class="card kpi"><div class="v" id="adKpiVeh">0</div><div class="l">Vehículos</div></div>
@@ -376,6 +378,11 @@ tr:last-child td{border-bottom:none}
         <div class="card">
           <h3 style="font-size:19px;margin-bottom:6px">⬆ Cargar documento del día</h3>
           <p class="note" style="margin-top:0">Sube el Excel <b>DocumentosAfiliados</b> (mismo formato que exporta tu plataforma). El sistema deriva conductores, vehículos, vínculos y vigencias. Reemplaza la foto de documentos del día anterior; no borra disponibilidades ni asignaciones.</p>
+          <label>Tipo de archivo</label>
+          <select id="adTipo" style="max-width:340px">
+            <option value="documentos">Documentos de afiliados (vigencias)</option>
+            <option value="conductores">Información general de conductores</option>
+          </select>
           <input type="file" id="adFile" accept=".xlsx,.xls" style="margin-top:12px;padding:9px">
           <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-amber" style="width:auto" id="adBtnImport" onclick="UI.importarExcel()">Procesar y cargar</button>
@@ -406,7 +413,92 @@ tr:last-child td{border-bottom:none}
           <tbody></tbody></table></div>
       </div>
 
-      <p class="note" style="margin-top:16px">💡 <b>Cargue automático diario:</b> este cargue puede automatizarse para que corra solo cada mañana. Requiere un pequeño paso técnico adicional (ver README, sección "Cargue automático"). Por ahora, hazlo con el botón cada día.</p>
+      <div class="card" style="margin-top:18px">
+        <h3 style="font-size:19px;margin-bottom:6px">⚙ Cargue automático diario</h3>
+        <p class="note" style="margin-top:0">Como el portal donde descargas el archivo requiere iniciar sesión, no puede descargarse solo de forma segura. En su lugar, la app te <b>recuerda cada mañana</b> hacer el cargue y avisa arriba cuando está pendiente. Así el proceso es rápido y confiable.</p>
+        <div class="grid g3" style="margin-top:14px">
+          <div>
+            <label>Hora del recordatorio</label>
+            <input type="time" id="cfgHora" style="max-width:160px">
+          </div>
+          <div>
+            <label>Recordatorio activo</label>
+            <select id="cfgActivo" style="max-width:160px">
+              <option value="true">Sí, recordar</option>
+              <option value="false">No recordar</option>
+            </select>
+          </div>
+          <div>
+            <label>Enlace al portal de descarga</label>
+            <input id="cfgPortal" placeholder="https://portal-de-tu-plataforma.com" style="max-width:320px">
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-amber sm" style="width:auto" onclick="UI.guardarConfigCargue()">Guardar configuración</button>
+          <button class="btn btn-ghost sm" id="cfgAbrirPortal" onclick="UI.abrirPortal()" style="display:none">Abrir portal ↗</button>
+        </div>
+        <p class="note">El enlace al portal aparece como botón en el recordatorio, para que con un clic vayas a descargar y luego subas el archivo aquí.</p>
+      </div>
+    </section>
+
+    <!-- ── ADMIN: Cartera ── -->
+    <section class="page" id="p-ad-cartera">
+      <div class="page-h"><div><h2>Cartera de rodamientos</h2><div class="sub">Estado de pagos por vehículo</div></div></div>
+      <div class="grid g3" style="margin-bottom:18px">
+        <div class="card kpi"><div class="v" id="caKpiTotal">0</div><div class="l">Vehículos en cartera</div></div>
+        <div class="card kpi warn"><div class="v" id="caKpiMora">0</div><div class="l">Con mora</div></div>
+        <div class="card kpi warn"><div class="v" id="caKpiValor">$0</div><div class="l">Total vencido</div></div>
+      </div>
+      <div class="card" style="margin-bottom:18px">
+        <h3 style="font-size:19px;margin-bottom:6px">⬆ Cargar cartera</h3>
+        <p class="note" style="margin-top:0">Sube el Excel <b>CarteraRodamientos</b>. Reemplaza la cartera anterior.</p>
+        <input type="file" id="caFile" accept=".xlsx,.xls" style="margin-top:12px;padding:9px">
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-amber" style="width:auto" id="caBtn" onclick="UI.importarCartera()">Procesar y cargar</button>
+          <span class="loading" id="caStatus"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h3 style="font-size:19px">Detalle de cartera</h3>
+          <div style="display:flex;gap:8px">
+            <select id="caFiltro" onchange="UI.renderCartera()" style="width:auto"><option value="mora">Solo con mora</option><option value="todos">Todos</option></select>
+            <input id="caBuscar" placeholder="Buscar placa…" style="max-width:180px" oninput="UI.renderCartera()">
+          </div>
+        </div>
+        <div class="tbl-wrap" style="border:none;margin-top:12px"><table id="tblCartera">
+          <thead><tr><th>Placa</th><th>Afiliado</th><th>Empresa</th><th>Últ. pago</th><th>Períodos vencidos</th><th>Valor vencido</th><th>Estado</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ── ADMIN: Consolidado ── -->
+    <section class="page" id="p-ad-consolidado">
+      <div class="page-h"><div><h2>Consolidado de flota</h2><div class="sub">Ficha completa de cada vehículo</div></div></div>
+      <div class="grid g3" style="margin-bottom:18px">
+        <div class="card kpi"><div class="v" id="coKpiTotal">0</div><div class="l">Vehículos</div></div>
+        <div class="card kpi"><div class="v" id="coKpiEmpresas">0</div><div class="l">Empresas</div></div>
+        <div class="card kpi"><div class="v" id="coKpiModelo">—</div><div class="l">Modelo promedio</div></div>
+      </div>
+      <div class="card" style="margin-bottom:18px">
+        <h3 style="font-size:19px;margin-bottom:6px">⬆ Cargar consolidado</h3>
+        <p class="note" style="margin-top:0">Sube el Excel <b>CONSOLIDADO</b> con la ficha de los vehículos. Reemplaza el consolidado anterior.</p>
+        <input type="file" id="coFile" accept=".xlsx,.xls" style="margin-top:12px;padding:9px">
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-amber" style="width:auto" id="coBtn" onclick="UI.importarConsolidado()">Procesar y cargar</button>
+          <button class="btn btn-ghost" style="width:auto" onclick="UI.exportarConsolidado()">Descargar Excel</button>
+          <span class="loading" id="coStatus"></span>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h3 style="font-size:19px">Detalle de flota</h3>
+          <input id="coBuscar" placeholder="Buscar placa…" style="max-width:200px" oninput="UI.renderConsolidado()">
+        </div>
+        <div class="tbl-wrap" style="border:none;margin-top:12px"><table id="tblConsolidado">
+          <thead><tr><th>Placa</th><th>Interno</th><th>Propietario</th><th>Marca</th><th>Clase</th><th>Modelo</th><th>SOAT vence</th><th>TecMec vence</th><th>Empresa</th></tr></thead>
+          <tbody></tbody></table></div>
+      </div>
     </section>
 
     <!-- ── ADMIN/JEFE: Equipo ── -->
