@@ -345,6 +345,7 @@ tr:last-child td{border-bottom:none}
     <section class="page" id="p-o-programar">
       <div class="page-h"><div><h2>Programación de vehículos</h2><div class="sub">Asigna servicio a las disponibilidades validadas</div></div>
         <button class="btn btn-ghost sm" onclick="UI.loadProgramacion()">↻ Actualizar</button></div>
+      <div id="pypBanner" class="card" style="margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-left:3px solid var(--amber)"></div>
       <div class="card filters" style="margin-bottom:16px">
         <div><label>Día</label><input type="date" id="prFecha"></div>
         <button class="btn btn-blue sm" onclick="UI.loadProgramacion()">Ver día</button>
@@ -508,11 +509,16 @@ tr:last-child td{border-bottom:none}
 <div class="modal-bg" id="mConductor">
   <div class="modal">
     <h3 id="mCondTitle">Nuevo conductor</h3>
-    <p class="sub">Datos de la persona. Los vehículos se vinculan desde la tabla de vehículos.</p>
+    <p class="sub">Datos de la persona. Todo conductor debe quedar anclado al menos a un vehículo.</p>
     <label>Nombre completo</label><input id="mcNombre">
     <label>Documento (será su PIN de ingreso)</label><input id="mcDoc" inputmode="numeric">
     <label>Teléfono</label><input id="mcTel">
     <label>Localidad base</label><select id="mcLoc"></select>
+    <div id="mcVehiculoWrap">
+      <label>Vehículo / placa (obligatorio) <span style="color:var(--red)">*</span></label>
+      <select id="mcVehiculo"></select>
+      <p class="note">El conductor quedará vinculado a esta placa. Luego puedes añadirle más desde la tabla de vehículos.</p>
+    </div>
     <div class="acts">
       <button class="btn btn-ghost sm" onclick="UI.cerrarModal('mConductor')">Cancelar</button>
       <button class="btn btn-amber sm" style="width:auto" onclick="UI.guardarConductorModal()">Guardar</button>

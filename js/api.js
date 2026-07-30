@@ -119,6 +119,12 @@ const Api = {
     return sb.from('conductores').insert(c);
   },
 
+  // Inserta y devuelve el conductor creado (para vincularlo enseguida)
+  async saveConductorReturn(c) {
+    const { data, error } = await sb.from('conductores').insert(c).select().single();
+    return { data, error };
+  },
+
   async updatePerfilConductor(id, campos) {
     return sb.from('conductores').update(campos).eq('id', id);
   },

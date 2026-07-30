@@ -219,7 +219,7 @@ begin
   end if;
 
   -- Reemplazar el snapshot de documentos (es una foto diaria)
-  delete from public.documentos;
+  truncate table public.documentos;
 
   for r in select * from jsonb_array_elements(p_rows)
   loop

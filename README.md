@@ -116,6 +116,18 @@ La alerta aparece en varios puntos:
 
 El bloqueo no es absoluto (operaciones puede despachar bajo su responsabilidad con la confirmación), pero nunca pasa desapercibido. Si prefieres que sea un bloqueo **total** (imposible asignar hasta regularizar), se puede endurecer con una sola línea; dime y lo cambio.
 
+## Pico y placa (servicio transporte especial)
+
+La programación muestra automáticamente el **pico y placa del día** para servicio de transporte especial en Bogotá: un banner con los dos dígitos restringidos, y cada vehículo cuya placa esté restringida se marca con 🚦 "Pico y placa hoy". La regla es la rotación oficial de parejas de dígitos (lun-sáb, 5:30am–9:00pm; domingos y festivos no aplica). Incluye un enlace a pyphoy.com para verificar. Si el gobierno cambia el decreto (próxima revisión oficial: enero 2027), basta actualizar el ancla en `js/app.js`.
+
+## Conductores anclados a placa
+
+Al crear un conductor nuevo, es **obligatorio** vincularlo al menos a un vehículo/placa en el mismo momento. Después se le pueden añadir más placas desde la tabla de vehículos. Un conductor nunca queda "suelto" sin vehículo.
+
+## Roles: admin y jefe
+
+Tanto el **administrador** como el **jefe de operación** pueden gestionar el equipo (crear, eliminar, cambiar roles y contraseñas). El admin puede gestionar incluso al jefe de operación. El sistema impide quedarse sin ningún jefe/admin.
+
 ## Modelo de datos
 
 ```

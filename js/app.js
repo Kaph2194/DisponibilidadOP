@@ -69,6 +69,49 @@ function rangoDia(fecha){
 const puedeGestionarFlota = () => ['coordinador','jefe','admin'].includes(ME.profile.role);
 const puedeGestionarPersonas = () => ['coordinador','jefe','analista','admin'].includes(ME.profile.role);
 
+// ══════════ Pico y placa (servicio transporte especial Bogotá) ══════════
+// Rotación de parejas de dígitos, avanza 1 paso por día hábil (lun-sáb).
+// Domingos y festivos NO aplica. Horario 5:30am–9:00pm.
+// Ancla verificada: jueves 30/07/2026 → restringe 7 y 8.
+const PYP_PARES = [[1,2],[3,4],[5,6],[7,8],[9,0]];
+// Festivos Colombia 2026 (fechas sin restricción)
+const FESTIVOS_2026 = new Set([
+  '2026-01-01','2026-01-12','2026-03-23','2026-04-02','2026-04-03','2026-05-01',
+  '2026-05-18','2026-06-08','2026-06-15','2026-06-29','2026-07-20','2026-08-07',
+  '2026-08-17','2026-10-12','2026-11-02','2026-11-16','2026-12-08','2026-12-25'
+]);
+function esDomingoOFestivo(d){
+  return d.getDay()===0 || FESTIVOS_2026.has(d.toISOString().slice(0,10));
+}
+// Cuenta días hábiles (lun-sáb, sin festivos) entre dos fechas (puede ser negativo)
+function diasHabilesEntre(desde, hasta){
+  let c=0; const paso = hasta>=desde?1:-1;
+  const a=new Date(desde), b=new Date(hasta);
+  a.setHours(12,0,0,0); b.setHours(12,0,0,0);
+  while(a.getTime()!==b.getTime()){
+    a.setDate(a.getDate()+paso);
+    if(!esDomingoOFestivo(a)) c+=paso;
+  }
+  return c;
+}
+function picoYPlacaDe(fecha){
+  const d = new Date(fecha); d.setHours(12,0,0,0);
+  if (esDomingoOFestivo(d)) return { aplica:false, digitos:[], texto:'No aplica (domingo/festivo)' };
+  const ancla = new Date('2026-07-30T12:00:00'); // jueves → índice 3 (7,8)
+  const idxAncla = 3;
+  const n = diasHabilesEntre(ancla, d);
+  let idx = ((idxAncla + n) % 5 + 5) % 5;
+  const par = PYP_PARES[idx];
+  return { aplica:true, digitos:par, texto:`Restringe placas terminadas en ${par[0]} y ${par[1]}` };
+}
+function placaRestringida(placa, fecha){
+  const pp = picoYPlacaDe(fecha);
+  if (!pp.aplica) return false;
+  const m = String(placa).trim().match(/(\d)\D*$/); // último dígito
+  if (!m) return false;
+  return pp.digitos.includes(parseInt(m[1],10));
+}
+
 // ══════════ Navegación por rol ══════════
 const NAV = {
   conductor: [
@@ -444,6 +487,15 @@ const UI = {
     $('mCondTitle').textContent = c ? 'Editar conductor' : 'Nuevo conductor';
     $('mcNombre').value=c?.nombre||''; $('mcDoc').value=c?.documento||'';
     $('mcTel').value=c?.telefono||''; $('mcLoc').value=c?.localidad||LOCALIDADES[0];
+    // Al crear: exigir placa. Al editar: no se toca el vínculo aquí.
+    if (id){
+      $('mcVehiculoWrap').style.display='none';
+    } else {
+      $('mcVehiculoWrap').style.display='block';
+      const vopts = cacheVehiculos.filter(v=>v.activo)
+        .map(v=>`<option value="${v.id}">${v.placa}${v.tipo_vehiculo?' · '+v.tipo_vehiculo:''}</option>`).join('');
+      $('mcVehiculo').innerHTML = vopts || '<option value="">— Primero crea un vehículo —</option>';
+    }
     $('mConductor').classList.add('on');
   },
   async guardarConductorModal(){
@@ -452,10 +504,26 @@ const UI = {
       telefono:$('mcTel').value.trim(), localidad:$('mcLoc').value
     };
     if (!c.nombre||!c.documento) return toast('Nombre y documento son obligatorios', true);
-    if (ctxConductorEdit) c.id=ctxConductorEdit;
-    const { error } = await Api.saveConductor(c);
+
+    if (ctxConductorEdit){
+      c.id=ctxConductorEdit;
+      const { error } = await Api.saveConductor(c);
+      if (error) return toast(Api.friendly(error), true);
+      UI.cerrarModal('mConductor'); toast('Conductor guardado ✓'); UI.loadFlota();
+      return;
+    }
+
+    // Crear: la placa es obligatoria
+    const vehId = $('mcVehiculo').value;
+    if (!vehId) return toast('Debes seleccionar un vehículo/placa. Si no hay, crea primero un vehículo.', true);
+
+    const { data: nuevo, error } = await Api.saveConductorReturn(c);
     if (error) return toast(Api.friendly(error), true);
-    UI.cerrarModal('mConductor'); toast('Conductor guardado ✓'); UI.loadFlota();
+    // Vincular a la placa
+    const { error: e2 } = await Api.vincular(nuevo.id, vehId);
+    if (e2){ toast('Conductor creado, pero no se pudo vincular: '+Api.friendly(e2), true); }
+    else toast('Conductor creado y vinculado ✓');
+    UI.cerrarModal('mConductor'); UI.loadFlota();
   },
 
   // — Vínculos —
@@ -485,7 +553,26 @@ const UI = {
 
   // ══════════ COORDINADOR: Programación ══════════
   async loadProgramacion(){
-    const [d1,d2] = rangoDia($('prFecha').value||hoyISO());
+    const fechaSel = $('prFecha').value||hoyISO();
+    // Banner pico y placa
+    const pp = picoYPlacaDe(fechaSel);
+    const banner=$('pypBanner');
+    if (pp.aplica){
+      banner.style.borderLeftColor='var(--amber)';
+      banner.innerHTML=`<div><div style="font-family:var(--font-d);font-weight:700;font-size:17px">🚦 Pico y placa · ${fmtFecha(fechaSel)}</div>
+        <div style="color:var(--muted);font-size:13px">${pp.texto} · No circulan de 5:30am a 9:00pm (servicio transporte especial)</div></div>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <span class="placa sm" style="background:#FF5D5D;color:#fff;border-color:#8b1a1a">${pp.digitos[0]}</span>
+          <span class="placa sm" style="background:#FF5D5D;color:#fff;border-color:#8b1a1a">${pp.digitos[1]}</span>
+        </div>
+        <a href="https://www.pyphoy.com/bogota/servicio-de-transporte-especial" target="_blank" style="color:var(--blue);font-size:12px;text-decoration:none">Verificar ↗</a>`;
+    } else {
+      banner.style.borderLeftColor='var(--green)';
+      banner.innerHTML=`<div style="font-family:var(--font-d);font-weight:700;font-size:17px;color:var(--green)">✓ ${fmtFecha(fechaSel)}: ${pp.texto} — circulan todas las placas</div>
+        <a href="https://www.pyphoy.com/bogota/servicio-de-transporte-especial" target="_blank" style="margin-left:auto;color:var(--blue);font-size:12px;text-decoration:none">Verificar ↗</a>`;
+    }
+
+    const [d1,d2] = rangoDia(fechaSel);
     const rows = (await Api.disponibilidadesRango(d1,d2)).filter(r=>r.estado==='validada');
     const sin  = rows.filter(r=>!r.asignacion_id);
     const asig = rows.filter(r=>r.asignacion_id);
@@ -496,8 +583,10 @@ const UI = {
     $('prPendientes').innerHTML = sin.length ? sin.map(r=>{
       const al = docAlerta(r);
       const bloqueado = al.nivel==='block';
-      return `<div class="item" style="${bloqueado?'border-color:var(--red);border-left:3px solid var(--red)':''}"><div class="info">
-        <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
+      const restringida = placaRestringida(r.placa, fechaSel);
+      return `<div class="item" style="${bloqueado?'border-color:var(--red);border-left:3px solid var(--red)':(restringida?'border-left:3px solid var(--amber)':'')}"><div class="info">
+        <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}
+          ${restringida?'<span class="badge b-pendiente" style="margin-left:6px">🚦 Pico y placa hoy</span>':''}</div>
         <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''} · Tel: ${r.telefono||'—'}</div>
         <div style="margin-top:6px">${docBadge(r)}</div>
         ${bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
