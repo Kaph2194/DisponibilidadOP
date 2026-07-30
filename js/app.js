@@ -22,14 +22,19 @@ let cacheConductores=[], cacheVehiculos=[], cacheVinculos=[], misVehs=[];
 
 // ══════════ Helpers ══════════
 const $ = id => document.getElementById(id);
-const hoyISO = () => new Date().toISOString().slice(0,10);
+const hoyISO = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 
 function toast(msg, isErr){
   const t=$('toast'); t.textContent=msg; t.className=isErr?'err':''; t.style.display='block';
   clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 4200);
 }
+function parseFechaLocal(v){
+  // "2026-07-30" → medianoche LOCAL (no UTC). Timestamps completos pasan tal cual.
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(v + 'T12:00:00');
+  return new Date(v);
+}
 function fmtFecha(iso){
-  const d=new Date(iso);
+  const d=parseFechaLocal(iso);
   return DIAS[d.getDay()]+' '+d.getDate()+'/'+String(d.getMonth()+1).padStart(2,'0');
 }
 function fmtHora(iso){
@@ -80,8 +85,11 @@ const FESTIVOS_2026 = new Set([
   '2026-05-18','2026-06-08','2026-06-15','2026-06-29','2026-07-20','2026-08-07',
   '2026-08-17','2026-10-12','2026-11-02','2026-11-16','2026-12-08','2026-12-25'
 ]);
+function isoLocal(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function esDomingoOFestivo(d){
-  return d.getDay()===0 || FESTIVOS_2026.has(d.toISOString().slice(0,10));
+  return d.getDay()===0 || FESTIVOS_2026.has(isoLocal(d));
 }
 // Cuenta días hábiles (lun-sáb, sin festivos) entre dos fechas (puede ser negativo)
 function diasHabilesEntre(desde, hasta){
@@ -95,7 +103,7 @@ function diasHabilesEntre(desde, hasta){
   return c;
 }
 function picoYPlacaDe(fecha){
-  const d = new Date(fecha); d.setHours(12,0,0,0);
+  const d = parseFechaLocal(fecha); d.setHours(12,0,0,0);
   if (esDomingoOFestivo(d)) return { aplica:false, digitos:[], texto:'No aplica (domingo/festivo)' };
   const ancla = new Date('2026-07-30T12:00:00'); // jueves → índice 3 (7,8)
   const idxAncla = 3;
