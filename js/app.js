@@ -225,6 +225,8 @@ const UI = {
     $('appScreen').style.display='block';
     $('sideName').textContent = ME.conductor?.nombre || ME.profile.full_name || ME.session.user.email;
     $('sideRole').textContent = ROLE_LABELS[role]||role;
+    if ($('mobName')) $('mobName').textContent = ME.conductor?.nombre || ME.profile.full_name || ME.session.user.email;
+    if ($('mobRole')) $('mobRole').textContent = ROLE_LABELS[role]||role;
     $('sidePlaca').innerHTML  = '';
     buildNav(role);
 
