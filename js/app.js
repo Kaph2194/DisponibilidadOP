@@ -1135,22 +1135,31 @@ const UI = {
     const r = await Api.gestionarEmpleados('list');
     if (r.error){ tb.innerHTML=`<tr><td colspan="4" style="color:var(--red)">${r.error}</td></tr>`; return; }
     UI._equipo = r.empleados;
+    const soyAdmin = ME.profile.role === 'admin';
     tb.innerHTML = r.empleados.map(e=>{
       const esYo = e.id===ME.session.user.id;
+      const esAdmin = e.role === 'admin';
+      // El admin solo puede ser tocado por sí mismo
+      const puedeEditar = !esAdmin || esYo;
       return `<tr>
         <td>${e.full_name||'—'}${esYo?' <span style="color:var(--amber)">(tú)</span>':''}</td>
         <td>${e.email}</td>
         <td>
+          ${puedeEditar ? `
           <select onchange="UI.cambiarRol('${e.id}',this.value)" style="width:auto;padding:5px 9px;font-size:13px">
             <option value="coordinador" ${e.role==='coordinador'?'selected':''}>Coordinador</option>
             <option value="analista" ${e.role==='analista'?'selected':''}>Analista</option>
             <option value="jefe" ${e.role==='jefe'?'selected':''}>Jefe</option>
             <option value="admin" ${e.role==='admin'?'selected':''}>Administrador</option>
-          </select>
+          </select>` :
+          `<span class="badge b-pendiente" style="font-size:12px">Administrador</span>
+           <span class="note" style="margin-left:6px;color:var(--faint)">Solo el admin edita su perfil</span>`}
         </td>
         <td style="white-space:nowrap">
+          ${puedeEditar ? `
           <button class="btn btn-ghost sm" onclick="UI.abrirReset('${e.id}','${(e.full_name||e.email).replace(/'/g,'')}')">Clave</button>
-          ${esYo?'':`<button class="btn btn-red-o sm" onclick="UI.eliminarEmpleado('${e.id}','${(e.full_name||e.email).replace(/'/g,'')}')">Eliminar</button>`}
+          ${esYo?'':`<button class="btn btn-red-o sm" onclick="UI.eliminarEmpleado('${e.id}','${(e.full_name||e.email).replace(/'/g,'')}')">Eliminar</button>`}` :
+          '—'}
         </td>
       </tr>`;
     }).join('') || '<tr><td colspan="4" style="color:var(--faint)">Sin empleados.</td></tr>';
