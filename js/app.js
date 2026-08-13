@@ -652,6 +652,7 @@ const UI = {
         ${bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
       </div>
       <div class="acts"><span class="badge b-sin">Sin asignar</span>
+        <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${r.placa} · ${fmtFecha(r.inicio)}')">Historial</button>
         ${puedeAsignar()?`<button class="btn ${bloqueado?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado},'${(al.detalle||'').replace(/'/g,'')}','${r.inicio}','${r.fin}')">${bloqueado?'Despachar igual':'Asignar'}</button>`:''}
       </div></div>`;
     }).join('')
@@ -791,9 +792,9 @@ const UI = {
           <span style="color:var(--muted);font-size:12px">${new Date(h.created_at).toLocaleString('es-CO')}</span>
         </div>
         <div style="color:var(--muted);font-size:13px;margin-top:3px">Por: ${h.hecho_por_nombre||'—'}${h.servicio?' · Servicio: '+h.servicio:''}</div>
-        ${h.observacion?`<div style="color:var(--amber);font-size:12.5px;margin-top:3px">↩ ${h.observacion}</div>`:''}
+        ${h.observacion?`<div style="color:var(--amber);font-size:12.5px;margin-top:3px">↩ Observación: ${h.observacion}</div>`:''}
       </div>`).join('')
-      : '<div class="empty">Sin historial de asignaciones.</div>';
+      : '<div class="empty" style="color:var(--muted)">Esta disponibilidad aún no tiene historial de asignaciones.<br><small>El historial se registra cuando se asigna, quita o reasigna un servicio.</small></div>';
   },
 
   // ══════════ ADMIN: Base de datos (cargue diario) ══════════
