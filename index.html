@@ -584,6 +584,28 @@ tr:last-child td{border-bottom:none}
 </div>
 
 <!-- ═══════ MODALES ═══════ -->
+<div class="modal-bg" id="mQuitarAsig">
+  <div class="modal">
+    <h3>Quitar asignación</h3>
+    <p class="sub" id="mQaInfo"></p>
+    <label>Observación (obligatoria)</label>
+    <textarea id="mQaObs" rows="3" placeholder="Explica el motivo de quitar la asignación…"></textarea>
+    <div class="acts">
+      <button class="btn btn-ghost sm" onclick="UI.cerrarModal('mQuitarAsig')">Cancelar</button>
+      <button class="btn btn-red-o sm" onclick="UI.confirmarQuitarAsig()">Quitar asignación</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="mHistorial">
+  <div class="modal" style="max-width:600px">
+    <h3>Historial de asignaciones</h3>
+    <p class="sub" id="mHistInfo"></p>
+    <div id="mHistList" style="max-height:400px;overflow:auto;margin-top:12px"></div>
+    <div class="acts"><button class="btn btn-ghost sm" onclick="UI.cerrarModal('mHistorial')">Cerrar</button></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="mAsignar">
   <div class="modal">
     <h3>Asignar vehículo</h3>

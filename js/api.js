@@ -206,15 +206,55 @@ const Api = {
   // ── Asignaciones (coordinador) ───────────────────────────
   async asignar(disponibilidadId, servicio, zona, notas) {
     const me = await this.getSession();
-    return sb.from('asignaciones').insert({
-      disponibilidad_id: disponibilidadId,
-      servicio, zona: zona || '', notas: notas || '',
-      asignada_por: me?.user?.id
-    });
+    // Verificar si ya existe una asignación cancelada para reasignar
+    const { data: prev } = await sb.from('asignaciones')
+      .select('id').eq('disponibilidad_id', disponibilidadId).eq('estado','cancelada').maybeSingle();
+    let result;
+    if (prev) {
+      result = await sb.from('asignaciones').update({
+        servicio, zona: zona||'', notas: notas||'', estado:'programada',
+        asignada_por: me?.user?.id, observacion_baja:'', bajada_por:null, bajada_at:null
+      }).eq('id', prev.id);
+    } else {
+      result = await sb.from('asignaciones').insert({
+        disponibilidad_id: disponibilidadId,
+        servicio, zona: zona||'', notas: notas||'',
+        asignada_por: me?.user?.id
+      });
+    }
+    if (!result.error) {
+      await sb.rpc('registrar_historial_asignacion', {
+        p_disponibilidad_id: disponibilidadId,
+        p_accion: prev ? 'reasignada' : 'asignada',
+        p_servicio: servicio, p_zona: zona||'', p_notas: notas||''
+      });
+    }
+    return result;
   },
 
-  async cancelarAsignacion(asignacionId) {
-    return sb.from('asignaciones').update({ estado: 'cancelada' }).eq('id', asignacionId);
+  async cancelarAsignacion(asignacionId, observacion, disponibilidadId) {
+    const me = await this.getSession();
+    const result = await sb.from('asignaciones').update({
+      estado: 'cancelada',
+      observacion_baja: observacion||'',
+      bajada_por: me?.user?.id,
+      bajada_at: new Date().toISOString()
+    }).eq('id', asignacionId);
+    if (!result.error && disponibilidadId) {
+      await sb.rpc('registrar_historial_asignacion', {
+        p_disponibilidad_id: disponibilidadId,
+        p_accion: 'quitada',
+        p_observacion: observacion||''
+      });
+    }
+    return result;
+  },
+
+  async historialAsignacion(disponibilidadId) {
+    const { data, error } = await sb.from('asignaciones_historial')
+      .select('*').eq('disponibilidad_id', disponibilidadId)
+      .order('created_at', { ascending: false });
+    return error ? [] : data;
   },
 
   // ── Ubicaciones ──────────────────────────────────────────

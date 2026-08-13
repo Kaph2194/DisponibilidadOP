@@ -96,6 +96,13 @@ Deno.serve(async (req) => {
     if (action === 'setRole') {
       const { target_id, role } = payload;
       if (!target_id || !ROLES_STAFF.includes(role)) return json({ error: 'Datos inválidos.' }, 400);
+
+      // Jefe no puede asignar ni modificar al admin
+      if (perfil.role === 'jefe') {
+        const { data: targetProfile } = await admin.from('profiles').select('role').eq('id', target_id).single();
+        if (targetProfile?.role === 'admin') return json({ error: 'El jefe no puede modificar al administrador.' }, 403);
+        if (role === 'admin') return json({ error: 'El jefe no puede asignar el rol de administrador.' }, 403);
+      }
       // Evitar quedarse sin ningún jefe ni admin
       if (!['jefe', 'admin'].includes(role)) {
         const { count } = await admin.from('profiles')
@@ -113,6 +120,11 @@ Deno.serve(async (req) => {
       const { target_id, password } = payload;
       if (!target_id || !password || password.length < 6)
         return json({ error: 'Contraseña inválida (mínimo 6 caracteres).' }, 400);
+      // Jefe no puede cambiar clave del admin
+      if (perfil.role === 'jefe') {
+        const { data: targetProfile } = await admin.from('profiles').select('role').eq('id', target_id).single();
+        if (targetProfile?.role === 'admin') return json({ error: 'El jefe no puede cambiar la clave del administrador.' }, 403);
+      }
       const { error } = await admin.auth.admin.updateUserById(target_id, { password });
       if (error) return json({ error: error.message }, 400);
       return json({ ok: true });
@@ -123,6 +135,11 @@ Deno.serve(async (req) => {
       const { target_id } = payload;
       if (!target_id) return json({ error: 'Falta el empleado a eliminar.' }, 400);
       if (target_id === user.id) return json({ error: 'No puedes eliminar tu propia cuenta.' }, 400);
+      // Jefe no puede eliminar admin
+      if (perfil.role === 'jefe') {
+        const { data: targetProfile } = await admin.from('profiles').select('role').eq('id', target_id).single();
+        if (targetProfile?.role === 'admin') return json({ error: 'El jefe no puede eliminar al administrador.' }, 403);
+      }
       const { error } = await admin.auth.admin.deleteUser(target_id);
       if (error) return json({ error: error.message }, 400);
       return json({ ok: true });

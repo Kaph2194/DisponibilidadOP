@@ -77,8 +77,10 @@ function rangoDia(fecha){
   const a=new Date(fecha+'T00:00:00');
   return [a.toISOString(), new Date(a.getTime()+864e5).toISOString()];
 }
-const puedeGestionarFlota = () => ['coordinador','jefe','admin'].includes(ME.profile.role);
+const puedeGestionarFlota = () => ['coordinador','jefe','admin','analista'].includes(ME.profile.role);
 const puedeGestionarPersonas = () => ['coordinador','jefe','analista','admin'].includes(ME.profile.role);
+const puedeAsignar = () => ['coordinador','jefe','analista','admin'].includes(ME.profile.role);
+const puedeVerReporteria = () => ['jefe','admin'].includes(ME.profile.role);
 
 // ══════════ Pico y placa (servicio transporte especial Bogotá) ══════════
 // Rotación de parejas de dígitos, avanza 1 paso por día hábil (lun-sáb).
@@ -136,6 +138,7 @@ const NAV = {
     ['p-c-perfil','👤','Perfil']
   ],
   analista: [
+    ['p-o-programar','🗓','Programación'],
     ['p-a-validar','✅','Validación'],
     ['p-a-crear','➕','Crear disponibilidad'],
     ['p-s-flota','🚗','Flota']
@@ -148,12 +151,14 @@ const NAV = {
   jefe: [
     ['p-j-reportes','📊','Reportería'],
     ['p-o-programar','🗓','Programación'],
+    ['p-a-validar','✅','Validación'],
     ['p-s-flota','🚗','Flota'],
     ['p-j-equipo','👥','Equipo']
   ],
   admin: [
     ['p-j-reportes','📊','Reportería'],
     ['p-o-programar','🗓','Programación'],
+    ['p-a-validar','✅','Validación'],
     ['p-s-flota','🚗','Flota'],
     ['p-ad-datos','🗄','Base de datos'],
     ['p-ad-cartera','💳','Cartera'],
@@ -312,20 +317,23 @@ const UI = {
       const al=docAlerta(t);
       return `<div class="item"><div class="info">
         <div class="t1"><span class="placa sm">${t.placa}</span> &nbsp;${fmtRango(t)}</div>
-        <div class="t2">${t.localidad||'Sin localidad'}${t.asignacion_id?` · Servicio: ${t.servicio||'—'} (${t.zona||''})`:''}</div>
+        <div class="t2">${t.localidad||'Sin localidad'}${t.asignacion_id?' · <span style="color:var(--green)">✓ Turno programado</span>':''}</div>
         ${al.nivel==='block'?`<div class="t2" style="color:var(--red);margin-top:4px">⛔ Tu vehículo tiene documentos pendientes: ${al.detalle||''}. Repórtalo a operaciones.</div>`:''}
       </div>${estadoBadge(t)}</div>`;
     }).join('')
       : '<div class="empty">No tienes turnos próximos. Sube tu disponibilidad para que te programen.</div>';
 
     $('cTurnosList').innerHTML = turnos.length ? turnos.map(t=>{
-      const puedeCancelar = t.estado!=='cancelada' && t.estado!=='rechazada' && new Date(t.inicio)>new Date();
+      const puedeCancelar = t.estado!=='cancelada' && t.estado!=='rechazada' && !t.asignacion_id && new Date(t.inicio)>new Date();
       return `<div class="item"><div class="info">
         <div class="t1"><span class="placa sm">${t.placa}</span> &nbsp;${fmtRango(t)} <span style="color:var(--faint)">· ${horasEntre(t.inicio,t.fin)} h</span></div>
         <div class="t2">${t.localidad||''}${t.notas?' · '+t.notas:''}${t.estado==='cancelada'&&t.motivo_cancelacion?' · Motivo: '+t.motivo_cancelacion:''}</div>
+        ${t.asignacion_id?'<div class="t2" style="color:var(--green);margin-top:3px">✓ Turno asignado — servicio programado</div>':''}
+        ${!t.asignacion_id&&t.estado==='validada'?'<div class="t2" style="color:var(--muted);font-size:12px">Pendiente de programación</div>':''}
       </div>
       <div class="acts">${estadoBadge(t)}
         ${puedeCancelar?`<button class="btn btn-red-o sm" onclick="UI.abrirCancelar('${t.id}','${t.placa} · ${fmtRango(t)}')">Cancelar</button>`:''}
+        ${t.asignacion_id&&!puedeCancelar&&t.estado!=='cancelada'?'<span class="note" style="color:var(--faint);font-size:11px">No se puede cancelar: ya programado</span>':''}
       </div></div>`;
     }).join('') : '<div class="empty">Aún no has registrado disponibilidades.</div>';
   },
@@ -415,7 +423,7 @@ const UI = {
     let rows = await Api.disponibilidadesRango(d1,d2);
     const filtro = $('avEstado').value;
     if (filtro) rows = rows.filter(r=>r.estado===filtro);
-    const soyValidador = ['analista','coordinador'].includes(ME.profile.role);
+    const soyValidador = ['analista','coordinador','jefe','admin'].includes(ME.profile.role);
     $('avList').innerHTML = rows.length ? rows.map(r=>`
       <div class="item"><div class="info">
         <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
@@ -641,7 +649,7 @@ const UI = {
         ${bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
       </div>
       <div class="acts"><span class="badge b-sin">Sin asignar</span>
-        ${[ 'coordinador','admin'].includes(ME.profile.role)?`<button class="btn ${bloqueado?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado},'${(al.detalle||'').replace(/'/g,'')}')">${bloqueado?'Despachar igual':'Asignar'}</button>`:''}
+        ${puedeAsignar()?`<button class="btn ${bloqueado?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado},'${(al.detalle||'').replace(/'/g,'')}')">${bloqueado?'Despachar igual':'Asignar'}</button>`:''}
       </div></div>`;
     }).join('')
       : '<div class="empty">🎉 No hay vehículos validados sin asignar para este día.</div>';
@@ -649,10 +657,13 @@ const UI = {
     $('prAsignadas').innerHTML = asig.length ? asig.map(r=>`
       <div class="item"><div class="info">
         <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.servicio||'Servicio sin nombre'}</div>
-        <div class="t2">${fmtRango(r)} · Zona: ${r.zona||'—'} · ${r.conductor_nombre}${r.asignacion_notas?' · '+r.asignacion_notas:''}</div>
+        <div class="t2">${fmtRango(r)} · Zona: ${r.zona||'—'} · ${r.conductor_nombre}</div>
+        ${r.asignacion_notas?`<div class="t2" style="color:var(--muted);font-size:12px">📝 ${r.asignacion_notas}</div>`:''}
+        ${r.observacion_baja?`<div class="t2" style="color:var(--amber);font-size:12px">↩ Última baja: ${r.observacion_baja}</div>`:''}
       </div>
       <div class="acts"><span class="badge b-asignada">Asignada</span>
-        ${[ 'coordinador','admin'].includes(ME.profile.role)?`<button class="btn btn-red-o sm" onclick="UI.quitarAsignacion('${r.asignacion_id}')">Quitar</button>`:''}
+        <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${r.placa} · ${fmtFecha(r.inicio)}')">Historial</button>
+        ${puedeAsignar()?`<button class="btn btn-red-o sm" onclick="UI.abrirQuitarAsig('${r.asignacion_id}','${r.id}','${r.placa} · ${fmtRango(r)}')">Quitar</button>`:''}
       </div></div>`).join('')
       : '<div class="empty">Ninguna asignación creada aún para este día.</div>';
   },
@@ -689,10 +700,43 @@ const UI = {
     toast(ctxAsignarBloqueado?'Vehículo despachado (con docs pendientes) ⚠':'Vehículo asignado ✓');
     UI.loadProgramacion();
   },
-  async quitarAsignacion(id){
-    const { error } = await Api.cancelarAsignacion(id);
+
+  // Quitar asignación con observación obligatoria
+  abrirQuitarAsig(asigId, dispId, info){
+    UI._ctxQuitarAsig = { asigId, dispId };
+    $('mQaInfo').textContent = info;
+    $('mQaObs').value = '';
+    $('mQuitarAsig').classList.add('on');
+  },
+  async confirmarQuitarAsig(){
+    const obs = $('mQaObs').value.trim();
+    if (!obs) return toast('La observación es obligatoria para quitar una asignación', true);
+    const { asigId, dispId } = UI._ctxQuitarAsig;
+    const { error } = await Api.cancelarAsignacion(asigId, obs, dispId);
+    UI.cerrarModal('mQuitarAsig');
     if (error) return toast(Api.friendly(error), true);
-    toast('Asignación retirada'); UI.loadProgramacion();
+    toast('Asignación quitada. Observación registrada ✓');
+    UI.loadProgramacion();
+  },
+
+  // Historial de asignaciones de una disponibilidad
+  async verHistorial(dispId, titulo){
+    $('mHistInfo').textContent = titulo;
+    $('mHistList').innerHTML = '<span class="loading"><span class="spin"></span>Cargando…</span>';
+    $('mHistorial').classList.add('on');
+    const hist = await Api.historialAsignacion(dispId);
+    const iconos = { asignada:'🟢', quitada:'🔴', reasignada:'🔄' };
+    $('mHistList').innerHTML = hist.length ? hist.map(h=>`
+      <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span>${iconos[h.accion]||'•'}</span>
+          <b style="text-transform:capitalize">${h.accion}</b>
+          <span style="color:var(--muted);font-size:12px">${new Date(h.created_at).toLocaleString('es-CO')}</span>
+        </div>
+        <div style="color:var(--muted);font-size:13px;margin-top:3px">Por: ${h.hecho_por_nombre||'—'}${h.servicio?' · Servicio: '+h.servicio:''}</div>
+        ${h.observacion?`<div style="color:var(--amber);font-size:12.5px;margin-top:3px">↩ ${h.observacion}</div>`:''}
+      </div>`).join('')
+      : '<div class="empty">Sin historial de asignaciones.</div>';
   },
 
   // ══════════ ADMIN: Base de datos (cargue diario) ══════════
