@@ -630,7 +630,10 @@ const UI = {
 
     const [d1,d2] = rangoDia(fechaSel);
     const rows = (await Api.disponibilidadesRango(d1,d2)).filter(r=>r.estado==='validada');
-    const sin  = rows.filter(r=>!r.asignacion_id);
+    // Sin asignar: no tiene ninguna asignación, O tiene parcial con horas libres
+    const totalH = r => horasEntre(r.inicio, r.fin);
+    const sin  = rows.filter(r=>!r.asignacion_id ||
+      (r.horas_asignadas && r.horas_asignadas < totalH(r) - 0.1));
     const asig = rows.filter(r=>r.asignacion_id);
     $('prKpiVal').textContent=rows.length;
     $('prKpiAsig').textContent=asig.length;
@@ -649,31 +652,65 @@ const UI = {
         ${bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
       </div>
       <div class="acts"><span class="badge b-sin">Sin asignar</span>
-        ${puedeAsignar()?`<button class="btn ${bloqueado?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado},'${(al.detalle||'').replace(/'/g,'')}')">${bloqueado?'Despachar igual':'Asignar'}</button>`:''}
+        ${puedeAsignar()?`<button class="btn ${bloqueado?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado},'${(al.detalle||'').replace(/'/g,'')}','${r.inicio}','${r.fin}')">${bloqueado?'Despachar igual':'Asignar'}</button>`:''}
       </div></div>`;
     }).join('')
       : '<div class="empty">🎉 No hay vehículos validados sin asignar para este día.</div>';
 
-    $('prAsignadas').innerHTML = asig.length ? asig.map(r=>`
-      <div class="item"><div class="info">
-        <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.servicio||'Servicio sin nombre'}</div>
-        <div class="t2">${fmtRango(r)} · Zona: ${r.zona||'—'} · ${r.conductor_nombre}</div>
-        ${r.asignacion_notas?`<div class="t2" style="color:var(--muted);font-size:12px">📝 ${r.asignacion_notas}</div>`:''}
-        ${r.observacion_baja?`<div class="t2" style="color:var(--amber);font-size:12px">↩ Última baja: ${r.observacion_baja}</div>`:''}
+    // Lista "Ya programadas" — agrupa por disponibilidad, muestra todos sus rangos
+    // Agrupa por disponibilidad
+    const porDisp = {};
+    asig.forEach(r=>{
+      if (!porDisp[r.id]) porDisp[r.id] = { ...r, servicios:[] };
+      // Parsear asignaciones_json si viene del servidor
+      try {
+        const aa = typeof r.asignaciones_json === 'string' ? JSON.parse(r.asignaciones_json) : r.asignaciones_json;
+        if (aa) porDisp[r.id].servicios = aa;
+      } catch{}
+    });
+
+    $('prAsignadas').innerHTML = Object.values(porDisp).length ? Object.values(porDisp).map(r=>{
+      const totalH = horasEntre(r.inicio, r.fin);
+      const asigH = Math.round((r.horas_asignadas||0)*10)/10;
+      const libre = Math.round((totalH - asigH)*10)/10;
+      const servicios = r.servicios && r.servicios.length ? r.servicios : (r.asignacion_id?[{id:r.asignacion_id, servicio:r.servicio, zona:r.zona, inicio:null, fin:null, notas:r.asignacion_notas, observacion_baja:r.observacion_baja}]:[]);
+      return `<div class="item" style="flex-direction:column;align-items:stretch"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre} &nbsp;<span style="color:var(--faint)">${fmtRango(r)}</span></div>
+          <div class="t2">Turno: ${totalH}h · Asignado: ${asigH}h${libre>0?` · <span style="color:var(--amber)">Libre: ${libre}h</span>`:' · <span style="color:var(--green)">Turno completo ✓</span>'}</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${libre>0&&puedeAsignar()?`<button class="btn btn-amber sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',false,'','${r.inicio}','${r.fin}')">＋ Agregar servicio</button>`:''}
+          <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${r.placa} · ${fmtFecha(r.inicio)}')">Historial</button>
+        </div>
       </div>
-      <div class="acts"><span class="badge b-asignada">Asignada</span>
-        <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${r.placa} · ${fmtFecha(r.inicio)}')">Historial</button>
-        ${puedeAsignar()?`<button class="btn btn-red-o sm" onclick="UI.abrirQuitarAsig('${r.asignacion_id}','${r.id}','${r.placa} · ${fmtRango(r)}')">Quitar</button>`:''}
-      </div></div>`).join('')
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        ${servicios.map(s=>`<div style="background:var(--panel2);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-weight:600;font-size:13.5px">🟢 ${s.servicio||'Sin nombre'}${s.inicio&&s.fin?` · ${fmtHora(s.inicio)} → ${fmtHora(s.fin)}`:''}${s.zona?' · '+s.zona:''}</div>
+            ${s.notas?`<div class="t2">${s.notas}</div>`:''}
+            ${s.observacion_baja?`<div style="color:var(--amber);font-size:12px">↩ ${s.observacion_baja}</div>`:''}
+          </div>
+          ${puedeAsignar()?`<button class="btn btn-red-o sm" onclick="UI.abrirQuitarAsig('${s.id}','${r.id}','${r.placa}')">Quitar</button>`:''}
+        </div>`).join('')}
+      </div></div>`;
+    }).join('')
       : '<div class="empty">Ninguna asignación creada aún para este día.</div>';
   },
 
-  abrirAsignar(dispId, info, loc, bloqueado, detalle){
+  abrirAsignar(dispId, info, loc, bloqueado, detalle, inicioISO, finISO){
     ctxAsignar=dispId;
     ctxAsignarBloqueado = !!bloqueado;
+    UI._asigRango = { inicio: inicioISO, fin: finISO }; // turno completo del conductor
     $('mAsigInfo').textContent=info;
     $('mAsigServicio').value=''; $('mAsigNotas').value='';
     if (loc) $('mAsigZona').value=loc;
+    // Precargar las horas del turno del conductor como sugerencia
+    if (inicioISO) $('mAsigInicio').value = fmtHora(inicioISO);
+    if (finISO)    $('mAsigFin').value   = fmtHora(finISO);
+    // Nota del rango
+    if (inicioISO && finISO)
+      $('mAsigRangoNota').textContent = `Turno del conductor: ${fmtHora(inicioISO)} → ${fmtHora(finISO)}. Puedes asignar un rango parcial para dejar horas libres para otro servicio.`;
     const alerta = $('mAsigAlerta');
     if (bloqueado){
       alerta.style.display='block';
@@ -693,8 +730,28 @@ const UI = {
     if (!serv) return toast('Escribe el servicio o ruta', true);
     if (ctxAsignarBloqueado && !$('mAsigConfirm').checked)
       return toast('Marca la casilla para confirmar el despacho pese a los documentos pendientes', true);
+
+    // Calcular timestamps del rango seleccionado
+    const rango = UI._asigRango || {};
+    const fechaBase = rango.inicio ? new Date(rango.inicio).toISOString().slice(0,10) : null;
+    let inicioTS = null, finTS = null;
+    const hIni = $('mAsigInicio').value, hFin = $('mAsigFin').value;
+    if (fechaBase && hIni && hFin){
+      inicioTS = new Date(fechaBase + 'T' + hIni + ':00').toISOString();
+      // Si fin < inicio en horas, el turno cruza medianoche
+      const dIni = new Date(fechaBase + 'T' + hIni + ':00');
+      let dFin = new Date(fechaBase + 'T' + hFin + ':00');
+      if (dFin <= dIni) dFin.setDate(dFin.getDate()+1);
+      finTS = dFin.toISOString();
+      // Validar que esté dentro del turno del conductor
+      if (rango.inicio && rango.fin){
+        if (inicioTS < rango.inicio || finTS > rango.fin)
+          return toast(`El rango (${hIni}→${hFin}) debe estar dentro del turno del conductor (${fmtHora(rango.inicio)}→${fmtHora(rango.fin)})`, true);
+      }
+    }
+
     const notas = $('mAsigNotas').value.trim() + (ctxAsignarBloqueado?' [DESPACHADO CON DOCS PENDIENTES]':'');
-    const { error } = await Api.asignar(ctxAsignar, serv, $('mAsigZona').value, notas.trim());
+    const { error } = await Api.asignar(ctxAsignar, serv, $('mAsigZona').value, notas.trim(), inicioTS, finTS);
     UI.cerrarModal('mAsignar');
     if (error) return toast(Api.friendly(error), true);
     toast(ctxAsignarBloqueado?'Vehículo despachado (con docs pendientes) ⚠':'Vehículo asignado ✓');

@@ -204,28 +204,18 @@ const Api = {
   },
 
   // ── Asignaciones (coordinador) ───────────────────────────
-  async asignar(disponibilidadId, servicio, zona, notas) {
+  async asignar(disponibilidadId, servicio, zona, notas, inicio, fin) {
     const me = await this.getSession();
-    // Verificar si ya existe una asignación cancelada para reasignar
-    const { data: prev } = await sb.from('asignaciones')
-      .select('id').eq('disponibilidad_id', disponibilidadId).eq('estado','cancelada').maybeSingle();
-    let result;
-    if (prev) {
-      result = await sb.from('asignaciones').update({
-        servicio, zona: zona||'', notas: notas||'', estado:'programada',
-        asignada_por: me?.user?.id, observacion_baja:'', bajada_por:null, bajada_at:null
-      }).eq('id', prev.id);
-    } else {
-      result = await sb.from('asignaciones').insert({
-        disponibilidad_id: disponibilidadId,
-        servicio, zona: zona||'', notas: notas||'',
-        asignada_por: me?.user?.id
-      });
-    }
+    const result = await sb.from('asignaciones').insert({
+      disponibilidad_id: disponibilidadId,
+      servicio, zona: zona||'', notas: notas||'',
+      inicio: inicio||null, fin: fin||null,
+      asignada_por: me?.user?.id
+    });
     if (!result.error) {
       await sb.rpc('registrar_historial_asignacion', {
         p_disponibilidad_id: disponibilidadId,
-        p_accion: prev ? 'reasignada' : 'asignada',
+        p_accion: 'asignada',
         p_servicio: servicio, p_zona: zona||'', p_notas: notas||''
       });
     }

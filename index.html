@@ -613,6 +613,11 @@ tr:last-child td{border-bottom:none}
     <div id="mAsigAlerta" style="display:none;background:rgba(255,93,93,.12);border:1px solid var(--red);color:#ffb3b3;border-radius:9px;padding:11px 13px;font-size:13px;margin:12px 0"></div>
     <label>Servicio / ruta</label><input id="mAsigServicio" placeholder="Ej: Ruta empresarial Chía AM">
     <label>Zona de operación</label><select id="mAsigZona"></select>
+    <div class="grid g2" style="margin-top:4px">
+      <div><label>Hora inicio servicio</label><input type="time" id="mAsigInicio"></div>
+      <div><label>Hora fin servicio</label><input type="time" id="mAsigFin"></div>
+    </div>
+    <p class="note" id="mAsigRangoNota">Opcional: deja vacío para asignar el turno completo. Usa rangos para dividir el turno entre varios servicios.</p>
     <label>Notas</label><textarea id="mAsigNotas" rows="2"></textarea>
     <label id="mAsigConfirmBox" style="display:none;align-items:center;gap:9px;margin-top:14px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--text);cursor:pointer">
       <input type="checkbox" id="mAsigConfirm" style="width:auto;margin:0">
