@@ -373,7 +373,48 @@ const Api = {
     return error ? [] : data;
   },
 
-  // Conductores sin información general cargada (no tienen licencia ni EPS = no vinieron del Excel)
+  // Consulta optimizada para programación (solo campos necesarios para operar)
+  async disponibilidadesRangoLean(desdeISO, hastaISO) {
+    const PAGE = 500; let from = 0; const all = [];
+    while (true) {
+      const { data, error } = await sb.from('disponibilidades')
+        .select(`id, conductor_id, vehiculo_id, inicio, fin, localidad, notas, estado,
+                 conductores!inner(nombre, documento, telefono),
+                 vehiculos!inner(placa, tipo_vehiculo, numero_interno),
+                 asignaciones(id, servicio, zona, notas, estado, inicio, fin, observacion_baja, asignada_por)`)
+        .eq('estado', 'validada')
+        .gte('inicio', desdeISO).lt('inicio', hastaISO)
+        .neq('asignaciones.estado', 'cancelada')
+        .order('inicio').range(from, from + PAGE - 1);
+      if (error) { console.error('lean error:', error.message); break; }
+      if (!data || !data.length) break;
+      // Normalizar al mismo formato que v_disponibilidades
+      all.push(...data.map(d=>({
+        ...d,
+        conductor_nombre: d.conductores?.nombre||'',
+        documento: d.conductores?.documento||'',
+        telefono: d.conductores?.telefono||'',
+        placa: d.vehiculos?.placa||'',
+        tipo_vehiculo: d.vehiculos?.tipo_vehiculo||'',
+        numero_interno: d.vehiculos?.numero_interno||'',
+        asignacion_id: d.asignaciones?.find(a=>a.estado!=='cancelada')?.id||null,
+        servicio: d.asignaciones?.find(a=>a.estado!=='cancelada')?.servicio||null,
+        zona: d.asignaciones?.find(a=>a.estado!=='cancelada')?.zona||null,
+        asignacion_notas: d.asignaciones?.find(a=>a.estado!=='cancelada')?.notas||null,
+        observacion_baja: d.asignaciones?.find(a=>a.estado!=='cancelada')?.observacion_baja||null,
+        asignaciones_json: d.asignaciones?.filter(a=>a.estado!=='cancelada')||[],
+        total_asignaciones: d.asignaciones?.filter(a=>a.estado!=='cancelada').length||0,
+        horas_asignadas: d.asignaciones?.filter(a=>a.estado!=='cancelada'&&a.inicio)
+          .reduce((s,a)=>(new Date(a.fin)-new Date(a.inicio))/36e5+s, 0)||0,
+        docs_criticos_pendientes: 0, docs_criticos_vencidos: 0,
+        docs_vencidos: 0, docs_sin_cargar: 0, detalle_criticos: null,
+        cartera_periodos_vencidos: 0, cartera_valor_vencido: 0
+      })));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  },
   async conductoresSinInfoGeneral() {
     const { data, error } = await sb.from('conductores')
       .select('id,nombre,documento,telefono')

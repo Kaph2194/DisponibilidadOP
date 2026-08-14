@@ -236,9 +236,12 @@ const UI = {
 
     const opts = LOCALIDADES.map(l=>`<option>${l}</option>`).join('');
     ['ndLoc','pfLoc','acLoc','mcLoc','mvLoc','mAsigZona'].forEach(id=>{ if($(id)) $(id).innerHTML=opts; });
-    ['ndFecha','acFecha','prFecha'].forEach(id=>{ if($(id)) $(id).value=hoyISO(); });
-    if ($('rpDesde')){ $('rpDesde').value=hoyISO(); const h=new Date(); h.setDate(h.getDate()+7); $('rpHasta').value=h.toISOString().slice(0,10); }
-    if ($('avDesde')){ $('avDesde').value=hoyISO(); const h=new Date(); h.setDate(h.getDate()+14); $('avHasta').value=h.toISOString().slice(0,10); }
+    // Programación abre mañana por defecto (para planificar el día siguiente)
+    const mananaISO = ()=>{ const d=new Date(); d.setDate(d.getDate()+1); return isoLocal(d); };
+    ['ndFecha','acFecha'].forEach(id=>{ if($(id)) $(id).value=hoyISO(); });
+    if ($('prFecha')) $('prFecha').value = mananaISO();
+    if ($('rpDesde')){ $('rpDesde').value=hoyISO(); const h=new Date(); h.setDate(h.getDate()+7); $('rpHasta').value=isoLocal(h); }
+    if ($('avDesde')){ $('avDesde').value=hoyISO(); const h=new Date(); h.setDate(h.getDate()+14); $('avHasta').value=isoLocal(h); }
 
     buildHourRail('ndHoras', nd, ()=>ndResumen());
     buildHourRail('acHoras', ac, ()=>acResumen());
@@ -442,7 +445,6 @@ const UI = {
         <div class="info" style="flex:1">
           <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
           <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''}${r.notas?' · '+r.notas:''}</div>
-          <div style="margin-top:6px">${docBadge(r)}</div>
         </div>
         <div class="acts">${estadoBadge(r)}
           ${soyValidador && r.estado==='pendiente' ? `
@@ -684,7 +686,10 @@ const UI = {
     }
 
     const [d1,d2] = rangoDia(fechaSel);
-    const rows = (await Api.disponibilidadesRango(d1,d2)).filter(r=>r.estado==='validada');
+    // Admin usa la vista completa (con docs y cartera); el resto usa consulta ligera
+    const rows = ME.profile.role === 'admin'
+      ? (await Api.disponibilidadesRango(d1,d2)).filter(r=>r.estado==='validada')
+      : await Api.disponibilidadesRangoLean(d1,d2);
     // Sin asignar: no tiene ninguna asignación, O tiene parcial con horas libres
     const totalH = r => horasEntre(r.inicio, r.fin);
     const sin  = rows.filter(r=>!r.asignacion_id ||
@@ -699,16 +704,18 @@ const UI = {
       const bloqueado = al.nivel==='block';
       const restringida = placaRestringida(r.placa, fechaSel);
       const cart = carteraAlerta(r);
+      // Solo admin ve el detalle de documentos y cartera en la operación
+      const esAdmin = ME.profile.role === 'admin';
       return `<div class="item" style="${bloqueado?'border-color:var(--red);border-left:3px solid var(--red)':(restringida||cart.hay?'border-left:3px solid var(--amber)':'')}"><div class="info">
         <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}
           ${restringida?'<span class="badge b-pendiente" style="margin-left:6px">🚦 Pico y placa hoy</span>':''}</div>
         <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''} · Tel: ${r.telefono||'—'}</div>
-        <div style="margin-top:6px">${docBadge(r)}${cart.hay?` <span class="badge b-cancelada" style="margin-left:4px">${cart.texto}</span>`:''}</div>
-        ${bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
+        ${esAdmin?`<div style="margin-top:6px">${docBadge(r)}${cart.hay?` <span class="badge b-cancelada" style="margin-left:4px">${cart.texto}</span>`:''}</div>`:''}
+        ${esAdmin&&bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
       </div>
       <div class="acts"><span class="badge b-sin">Sin asignar</span>
         <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${r.placa} · ${fmtFecha(r.inicio)}')">Historial</button>
-        ${puedeAsignar()?`<button class="btn ${bloqueado?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado},'${(al.detalle||'').replace(/'/g,'')}','${r.inicio}','${r.fin}')">${bloqueado?'Despachar igual':'Asignar'}</button>`:''}
+        ${puedeAsignar()?`<button class="btn ${bloqueado&&esAdmin?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado&&esAdmin},'${(al.detalle||'').replace(/'/g,'')}','${r.inicio}','${r.fin}')">Asignar</button>`:''}
       </div></div>`;
     }).join('')
       : '<div class="empty">🎉 No hay vehículos validados sin asignar para este día.</div>';
