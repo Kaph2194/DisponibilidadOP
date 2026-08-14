@@ -422,8 +422,8 @@ const UI = {
   async loadValidacion(){
     const [d1] = rangoDia($('avDesde').value||hoyISO());
     const [,d2] = rangoDia($('avHasta').value||hoyISO());
-    let rows = await Api.disponibilidadesRango(d1,d2);
     const filtro = $('avEstado').value;
+    let rows = await Api.disponibilidadesRangoTodos(d1,d2);
     if (filtro) rows = rows.filter(r=>r.estado===filtro);
     const soyValidador = ['analista','coordinador','jefe','admin'].includes(ME.profile.role);
     UI._avRows = rows; // guardar para selección múltiple
@@ -686,10 +686,9 @@ const UI = {
     }
 
     const [d1,d2] = rangoDia(fechaSel);
-    // Admin usa la vista completa (con docs y cartera); el resto usa consulta ligera
-    const rows = ME.profile.role === 'admin'
-      ? (await Api.disponibilidadesRango(d1,d2)).filter(r=>r.estado==='validada')
-      : await Api.disponibilidadesRangoLean(d1,d2);
+    // Todos los roles usan la consulta lean en programación (más rápida)
+    // Solo la Reportería usa la vista completa con docs/cartera
+    const rows = await Api.disponibilidadesRangoLean(d1,d2);
     // Sin asignar: no tiene ninguna asignación, O tiene parcial con horas libres
     const totalH = r => horasEntre(r.inicio, r.fin);
     const sin  = rows.filter(r=>!r.asignacion_id ||

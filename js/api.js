@@ -373,6 +373,36 @@ const Api = {
     return error ? [] : data;
   },
 
+  // Consulta lean para todos los estados (validación)
+  async disponibilidadesRangoTodos(desdeISO, hastaISO) {
+    const PAGE = 500; let from = 0; const all = [];
+    while (true) {
+      const { data, error } = await sb.from('disponibilidades')
+        .select(`id, conductor_id, vehiculo_id, inicio, fin, localidad, notas, estado,
+                 motivo_cancelacion,
+                 conductores!inner(nombre, documento, telefono),
+                 vehiculos!inner(placa, tipo_vehiculo, numero_interno)`)
+        .gte('inicio', desdeISO).lt('inicio', hastaISO)
+        .order('inicio').range(from, from + PAGE - 1);
+      if (error) { console.error('todos error:', error.message); break; }
+      if (!data || !data.length) break;
+      all.push(...data.map(d=>({
+        ...d,
+        conductor_nombre: d.conductores?.nombre||'',
+        documento: d.conductores?.documento||'',
+        telefono: d.conductores?.telefono||'',
+        placa: d.vehiculos?.placa||'',
+        tipo_vehiculo: d.vehiculos?.tipo_vehiculo||'',
+        numero_interno: d.vehiculos?.numero_interno||'',
+        asignacion_id: null, servicio: null, zona: null,
+        docs_criticos_pendientes: 0, cartera_periodos_vencidos: 0
+      })));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  },
+
   // Consulta optimizada para programación (solo campos necesarios para operar)
   async disponibilidadesRangoLean(desdeISO, hastaISO) {
     const PAGE = 500; let from = 0; const all = [];
