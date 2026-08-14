@@ -173,11 +173,20 @@ const Api = {
   },
 
   async disponibilidadesRango(desdeISO, hastaISO) {
-    const { data, error } = await sb.from('v_disponibilidades')
-      .select('*')
-      .gte('inicio', desdeISO).lt('inicio', hastaISO)
-      .order('inicio');
-    return error ? [] : data;
+    // Paginamos de 200 en 200 para evitar timeout en rangos amplios
+    const PAGE = 200; let from = 0; const all = [];
+    while (true) {
+      const { data, error } = await sb.from('v_disponibilidades')
+        .select('*')
+        .gte('inicio', desdeISO).lt('inicio', hastaISO)
+        .order('inicio').range(from, from + PAGE - 1);
+      if (error) { console.error('disponibilidades error:', error.message); break; }
+      if (!data || !data.length) break;
+      all.push(...data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
   },
 
   async crearDisponibilidades(rows) {
