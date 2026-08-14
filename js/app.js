@@ -423,18 +423,74 @@ const UI = {
     const filtro = $('avEstado').value;
     if (filtro) rows = rows.filter(r=>r.estado===filtro);
     const soyValidador = ['analista','coordinador','jefe','admin'].includes(ME.profile.role);
+    UI._avRows = rows; // guardar para selección múltiple
+
+    // Mostrar barra de selección solo cuando hay pendientes y puede validar
+    const hayPendientes = soyValidador && rows.some(r=>r.estado==='pendiente');
+    const bar = $('avBulkBar');
+    bar.style.display = hayPendientes ? 'flex' : 'none';
+    if (hayPendientes) { $('avSelTodos').checked=false; $('avConteo').textContent='0 seleccionados'; }
+
     $('avList').innerHTML = rows.length ? rows.map(r=>`
-      <div class="item"><div class="info">
-        <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
-        <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''}${r.notas?' · '+r.notas:''}</div>
-        <div style="margin-top:6px">${docBadge(r)}</div>
-      </div>
-      <div class="acts">${estadoBadge(r)}
+      <div class="item" id="avItem_${r.id}" style="position:relative">
         ${soyValidador && r.estado==='pendiente' ? `
-          <button class="btn btn-green sm" onclick="UI.validar('${r.id}','validada')">Validar</button>
-          <button class="btn btn-red-o sm" onclick="UI.validar('${r.id}','rechazada')">Rechazar</button>`:''}
-      </div></div>`).join('')
+        <label style="display:flex;align-items:center;padding-right:10px;cursor:pointer;flex-shrink:0">
+          <input type="checkbox" class="av-chk" data-id="${r.id}"
+            style="width:18px;height:18px;margin:0;cursor:pointer;accent-color:var(--amber)"
+            onchange="UI.onCheckChange()">
+        </label>` : '<div style="width:28px;flex-shrink:0"></div>'}
+        <div class="info" style="flex:1">
+          <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
+          <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''}${r.notas?' · '+r.notas:''}</div>
+          <div style="margin-top:6px">${docBadge(r)}</div>
+        </div>
+        <div class="acts">${estadoBadge(r)}
+          ${soyValidador && r.estado==='pendiente' ? `
+            <button class="btn btn-green sm" onclick="UI.validar('${r.id}','validada')">Validar</button>
+            <button class="btn btn-red-o sm" onclick="UI.validar('${r.id}','rechazada')">Rechazar</button>`:''}</div>
+      </div>`).join('')
       : '<div class="empty">No hay disponibilidades con ese filtro.</div>';
+  },
+
+  onCheckChange(){
+    const chks = document.querySelectorAll('.av-chk:checked');
+    const total = document.querySelectorAll('.av-chk').length;
+    $('avConteo').textContent = `${chks.length} de ${total} seleccionados`;
+    $('avSelTodos').checked = chks.length === total && total > 0;
+    $('avSelTodos').indeterminate = chks.length > 0 && chks.length < total;
+    // Highlight filas seleccionadas
+    document.querySelectorAll('.av-chk').forEach(c=>{
+      const item = document.getElementById('avItem_'+c.dataset.id);
+      if (item) item.classList.toggle('sel', c.checked);
+    });
+  },
+
+  toggleSelTodos(checked){
+    document.querySelectorAll('.av-chk').forEach(c=>{ c.checked=checked; });
+    UI.onCheckChange();
+  },
+
+  async validarSeleccionados(estado){
+    const ids = [...document.querySelectorAll('.av-chk:checked')].map(c=>c.dataset.id);
+    if (!ids.length) return toast('Selecciona al menos una disponibilidad', true);
+    const palabra = estado==='validada'?'validar':'rechazar';
+    const btn = estado==='validada'?$('avBulkBar').querySelector('.btn-green'):$('avBulkBar').querySelector('.btn-red-o');
+    btn.disabled=true; btn.innerHTML=`<span class="spin"></span>${ids.length} ${palabra}ando…`;
+    let ok=0, err=0;
+    // Procesar en paralelo (máx 10 a la vez para no saturar)
+    const chunks = [];
+    for(let i=0;i<ids.length;i+=10) chunks.push(ids.slice(i,i+10));
+    for(const chunk of chunks){
+      await Promise.all(chunk.map(async id=>{
+        const { error } = await Api.cambiarEstadoDisponibilidad(id, estado);
+        if (error) err++; else ok++;
+      }));
+    }
+    btn.disabled=false;
+    btn.innerHTML = estado==='validada'?'✓ Validar seleccionados':'✗ Rechazar seleccionados';
+    if (err>0) toast(`${ok} ${estado}(s), ${err} con error`, true);
+    else toast(`${ok} disponibilidad(es) ${estado}(s) ✓`);
+    UI.loadValidacion();
   },
 
   async validar(id, estado){
