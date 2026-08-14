@@ -83,11 +83,10 @@ const puedeAsignar = () => ['coordinador','jefe','analista','admin'].includes(ME
 const puedeVerReporteria = () => ['jefe','admin'].includes(ME.profile.role);
 
 // ══════════ Pico y placa (servicio transporte especial Bogotá) ══════════
-// Rotación de parejas de dígitos, avanza 1 paso por día hábil (lun-sáb).
-// Domingos y festivos NO aplica. Horario 5:30am–9:00pm.
-// Ancla verificada: jueves 30/07/2026 → restringe 7 y 8.
+// Rotación avanza lun-sáb INCLUYENDO festivos. Domingos no avanzan.
+// Festivos y domingos: "No aplica" para circular.
+// Ancla: viernes 14/08/2026 → restringe 3 y 4 (verificado pyphoy.com).
 const PYP_PARES = [[1,2],[3,4],[5,6],[7,8],[9,0]];
-// Festivos Colombia 2026 (fechas sin restricción)
 const FESTIVOS_2026 = new Set([
   '2026-01-01','2026-01-12','2026-03-23','2026-04-02','2026-04-03','2026-05-01',
   '2026-05-18','2026-06-08','2026-06-15','2026-06-29','2026-07-20','2026-08-07',
@@ -99,31 +98,31 @@ function isoLocal(d){
 function esDomingoOFestivo(d){
   return d.getDay()===0 || FESTIVOS_2026.has(isoLocal(d));
 }
-// Cuenta días hábiles (lun-sáb, sin festivos) entre dos fechas (puede ser negativo)
+// La rotación avanza todos los días lun-sáb, festivos incluidos (solo domingos no)
 function diasHabilesEntre(desde, hasta){
   let c=0; const paso = hasta>=desde?1:-1;
   const a=new Date(desde), b=new Date(hasta);
   a.setHours(12,0,0,0); b.setHours(12,0,0,0);
   while(a.getTime()!==b.getTime()){
     a.setDate(a.getDate()+paso);
-    if(!esDomingoOFestivo(a)) c+=paso;
+    if(a.getDay()!==0) c+=paso; // solo excluir domingos
   }
   return c;
 }
 function picoYPlacaDe(fecha){
   const d = parseFechaLocal(fecha); d.setHours(12,0,0,0);
   if (esDomingoOFestivo(d)) return { aplica:false, digitos:[], texto:'No aplica (domingo/festivo)' };
-  const ancla = new Date('2026-07-30T12:00:00'); // jueves → índice 3 (7,8)
-  const idxAncla = 3;
+  const ancla = new Date('2026-08-14T12:00:00'); // viernes → índice 1 (3,4)
+  const idxAncla = 1;
   const n = diasHabilesEntre(ancla, d);
-  let idx = ((idxAncla + n) % 5 + 5) % 5;
+  const idx = ((idxAncla + n) % 5 + 5) % 5;
   const par = PYP_PARES[idx];
   return { aplica:true, digitos:par, texto:`Restringe placas terminadas en ${par[0]} y ${par[1]}` };
 }
 function placaRestringida(placa, fecha){
   const pp = picoYPlacaDe(fecha);
   if (!pp.aplica) return false;
-  const m = String(placa).trim().match(/(\d)\D*$/); // último dígito
+  const m = String(placa).trim().match(/(\d)\D*$/);
   if (!m) return false;
   return pp.digitos.includes(parseInt(m[1],10));
 }
@@ -1280,8 +1279,11 @@ const UI = {
       L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
         {attribution:'© OpenStreetMap · © CARTO', maxZoom:19}).addTo(mapHeat);
     }
-    setTimeout(()=>mapHeat.invalidateSize(), 150);
-    UI.renderHeat();
+    // Esperar a que el contenedor tenga ancho real antes de renderizar
+    setTimeout(()=>{
+      mapHeat.invalidateSize();
+      UI.renderHeat();
+    }, 300);
   },
 
   setHeatMode(mode){
