@@ -1329,6 +1329,15 @@ const UI = {
       <td>${r.localidad||'—'}</td><td>${estadoBadge(r)}</td></tr>`).join('')
       : '<tr><td colspan="6" style="color:var(--green)">✓ Toda la flota disponible está asignada en el rango.</td></tr>';
 
+    // — Sección de cumplimiento (solo admin/jefe) —
+    const cumpl = $('rpCumplimiento');
+    if (puedeVerReporteria()) {
+      cumpl.style.display = 'block';
+      UI.loadCumplimiento(rows);
+    } else {
+      cumpl.style.display = 'none';
+    }
+
     // — Mapa de calor —
     if (!mapHeat){
       mapHeat = L.map('mapaCalor').setView([4.62,-74.11], 11);
@@ -1340,6 +1349,54 @@ const UI = {
       mapHeat.invalidateSize();
       UI.renderHeat();
     }, 300);
+  },
+
+  async loadCumplimiento(rows){
+    // 1) Despachados con documentos críticos
+    const conDocs = rows.filter(r=>r.asignacion_id && (r.docs_criticos_pendientes||0)>0);
+    $('tblAlertaDocs').querySelector('tbody').innerHTML = conDocs.length ? conDocs.map(r=>`
+      <tr>
+        <td><span class="placa sm">${r.placa}</span></td>
+        <td>${r.conductor_nombre}</td>
+        <td style="font-size:12px">${r.servicio||'—'}</td>
+        <td>${fmtFecha(r.inicio)}</td>
+        <td style="color:var(--red);font-size:12px">${r.detalle_criticos||'—'}</td>
+      </tr>`).join('')
+      : '<tr><td colspan="5" style="color:var(--green)">✓ Ningún despacho con documentos críticos pendientes.</td></tr>';
+
+    // 2) Despachados con cartera vencida
+    const conCartera = rows.filter(r=>r.asignacion_id && (r.cartera_periodos_vencidos||0)>0);
+    $('tblAlertaCartera').querySelector('tbody').innerHTML = conCartera.length ? conCartera.map(r=>`
+      <tr>
+        <td><span class="placa sm">${r.placa}</span></td>
+        <td>${r.conductor_nombre}</td>
+        <td style="font-size:12px">${r.servicio||'—'}</td>
+        <td>${fmtFecha(r.inicio)}</td>
+        <td style="color:var(--amber);font-weight:700">${r.cartera_periodos_vencidos}</td>
+        <td style="color:var(--amber)">$${Number(r.cartera_valor_vencido||0).toLocaleString('es-CO')}</td>
+      </tr>`).join('')
+      : '<tr><td colspan="6" style="color:var(--green)">✓ Ningún despacho con cartera vencida.</td></tr>';
+
+    // 3) Conductores sin info general (sin licencia cargada = no están en el Excel de conductores)
+    const sinInfo = await Api.conductoresSinInfoGeneral();
+    // Filtrar solo los que tienen turnos en el rango actual
+    const docConTurno = new Set(rows.map(r=>r.documento).filter(Boolean));
+    const sinInfoConTurno = sinInfo.filter(c=>docConTurno.has(c.documento));
+    // Agregar placas que operaron
+    const placasPorDoc = {};
+    rows.forEach(r=>{ if(r.documento){ if(!placasPorDoc[r.documento]) placasPorDoc[r.documento]=new Set(); placasPorDoc[r.documento].add(r.placa); } });
+    const turnosPorDoc = {};
+    rows.forEach(r=>{ if(r.documento) turnosPorDoc[r.documento]=(turnosPorDoc[r.documento]||0)+1; });
+
+    $('tblAlertaConductores').querySelector('tbody').innerHTML = sinInfoConTurno.length ? sinInfoConTurno.map(c=>`
+      <tr>
+        <td>${c.nombre}</td>
+        <td style="font-size:12px">${c.documento}</td>
+        <td>${[...( placasPorDoc[c.documento]||[])].map(p=>`<span class="placa sm" style="margin:2px">${p}</span>`).join('')}</td>
+        <td style="text-align:center">${turnosPorDoc[c.documento]||0}</td>
+        <td><span class="badge b-pendiente">Sin info general</span></td>
+      </tr>`).join('')
+      : '<tr><td colspan="5" style="color:var(--green)">✓ Todos los conductores que operaron tienen información general cargada.</td></tr>';
   },
 
   setHeatMode(mode){

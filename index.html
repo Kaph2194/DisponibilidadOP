@@ -588,6 +588,34 @@ tr:last-child td{border-bottom:none}
           <thead><tr><th>Placa</th><th>Conductor</th><th>Fecha</th><th>Franja</th><th>Localidad</th><th>Estado</th></tr></thead>
           <tbody></tbody></table></div>
       </div>
+
+      <!-- Sección de cumplimiento: solo admin/jefe -->
+      <div id="rpCumplimiento" style="display:none">
+        <div class="chart-box" style="margin-top:18px">
+          <h3 style="color:var(--red)">🚨 Despachados con documentos críticos vencidos o sin cargar</h3>
+          <p class="note" style="margin-top:0">Asignaciones sobre vehículos con SOAT, tecnomecánica, licencia u otro documento legal en mal estado en el momento del despacho.</p>
+          <div class="tbl-wrap" style="border:none;margin-top:10px"><table id="tblAlertaDocs">
+            <thead><tr><th>Placa</th><th>Conductor</th><th>Servicio</th><th>Fecha</th><th>Documentos pendientes</th></tr></thead>
+            <tbody></tbody></table></div>
+        </div>
+
+        <div class="chart-box" style="margin-top:18px">
+          <h3 style="color:var(--amber)">💳 Despachados con cartera vencida</h3>
+          <p class="note" style="margin-top:0">Asignaciones sobre vehículos con períodos de rodamiento sin pagar en el momento del despacho.</p>
+          <div class="tbl-wrap" style="border:none;margin-top:10px"><table id="tblAlertaCartera">
+            <thead><tr><th>Placa</th><th>Conductor</th><th>Servicio</th><th>Fecha</th><th>Períodos vencidos</th><th>Valor vencido</th></tr></thead>
+            <tbody></tbody></table></div>
+        </div>
+
+        <div class="chart-box" style="margin-top:18px">
+          <h3 style="color:var(--purple)">👤 Conductores que operaron sin estar en la base</h3>
+          <p class="note" style="margin-top:0">Conductores con disponibilidades en el rango cuyo documento no aparece en la información general (no han sido cargados desde el Excel de conductores).</p>
+          <div class="tbl-wrap" style="border:none;margin-top:10px"><table id="tblAlertaConductores">
+            <thead><tr><th>Conductor</th><th>Documento</th><th>Placa(s)</th><th>Turnos</th><th>Estado</th></tr></thead>
+            <tbody></tbody></table></div>
+        </div>
+      </div>
+
     </section>
 
   </main>

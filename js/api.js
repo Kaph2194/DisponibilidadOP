@@ -373,6 +373,16 @@ const Api = {
     return error ? [] : data;
   },
 
+  // Conductores sin información general cargada (no tienen licencia ni EPS = no vinieron del Excel)
+  async conductoresSinInfoGeneral() {
+    const { data, error } = await sb.from('conductores')
+      .select('id,nombre,documento,telefono')
+      .or('licencia_num.is.null,licencia_num.eq.')
+      .eq('activo', true)
+      .order('nombre');
+    return error ? [] : data;
+  },
+
   // ── Configuración (recordatorio de cargue, etc.) ─────────
   async getConfig() {
     const { data, error } = await sb.from('config').select('*');
