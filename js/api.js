@@ -30,6 +30,20 @@ const ROLE_LABELS = {
   admin:       'Administrador'
 };
 
+// Supabase devuelve máximo 1000 filas por consulta: traemos todo por páginas
+async function fetchAll(buildQuery, PAGE = 1000) {
+  let from = 0, all = [];
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+    if (error) { console.error(error.message); break; }
+    if (!data || !data.length) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 const Api = {
 
   // Convierte errores de Postgres en mensajes claros para el usuario
@@ -59,15 +73,23 @@ const Api = {
 
   // Conductor: placa (de un vehículo vinculado) + documento.
   async loginConductor(plate, doc) {
+    const raw   = doc.trim();
+    doc = raw.replace(/[^0-9a-z]/gi, '');          // "1.023.456" → "1023456"
+    plate = plate.toUpperCase().replace(/[^A-Z0-9]/g, ''); // "abc-123" → "ABC123"
     const email = this.driverEmail(doc);
-    const pass  = 'SC·' + doc.trim();
+    const pass  = 'SC·' + doc;
 
     let { error } = await sb.auth.signInWithPassword({ email, password: pass });
     if (!error) return { ok: true };
+    // Cuentas antiguas creadas con el documento tal cual se escribió
+    if (raw !== doc) {
+      ({ error } = await sb.auth.signInWithPassword({ email, password: 'SC·' + raw }));
+      if (!error) return { ok: true };
+    }
 
     // Primer ingreso: verificar el par placa+documento y registrarse
     const { data: match, error: e1 } = await sb.rpc('verificar_conductor', {
-      p_placa: plate.trim(), p_documento: doc.trim()
+      p_placa: plate, p_documento: doc
     });
     if (e1) return { ok: false, error: e1.message };
     if (!match || !match.length) return { ok: false, error: 'Placa o documento no encontrado, o no estás vinculado a ese vehículo. Verifica con tu coordinador.' };
@@ -110,8 +132,7 @@ const Api = {
 
   // ── Conductores (personas) ───────────────────────────────
   async listConductores() {
-    const { data, error } = await sb.from('conductores').select('*').order('nombre');
-    return error ? [] : data;
+    return fetchAll(() => sb.from('conductores').select('*').order('nombre').order('id'));
   },
 
   async saveConductor(c) {
@@ -131,8 +152,7 @@ const Api = {
 
   // ── Vehículos ────────────────────────────────────────────
   async listVehiculos() {
-    const { data, error } = await sb.from('vehiculos').select('*').order('placa');
-    return error ? [] : data;
+    return fetchAll(() => sb.from('vehiculos').select('*').order('placa'));
   },
 
   async saveVehiculo(v) {
@@ -142,8 +162,7 @@ const Api = {
 
   // ── Vínculos conductor ⟷ vehículo ────────────────────────
   async listVinculos() {
-    const { data, error } = await sb.from('v_vinculos').select('*');
-    return error ? [] : data;
+    return fetchAll(() => sb.from('v_vinculos').select('*').order('id'));
   },
 
   async vincular(conductorId, vehiculoId) {
@@ -328,6 +347,14 @@ const Api = {
     if (soloMora) q = q.gt('periodos_vencidos', 0);
     const { data, error } = await q.limit(2000);
     return error ? [] : data;
+  },
+
+  // Crea en la flota los vehículos (y vínculos con su propietario) que
+  // estén en consolidado, cartera o base de documentos y aún no existan.
+  async sincronizarFlota() {
+    const { data, error } = await sb.rpc('sincronizar_flota');
+    if (error) return { error: error.message };
+    return data;
   },
 
   async listarConsolidado() {

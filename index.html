@@ -360,12 +360,13 @@ tr:last-child td{border-bottom:none}
           <button class="btn btn-ghost sm" style="display:none" id="btnNuevoCond" onclick="UI.abrirConductorModal()">＋ Conductor</button>
         </div></div>
 
-      <h3 style="font-size:20px;margin:0 0 10px">Vehículos</h3>
+      <input id="flBuscar" placeholder="🔎 Buscar placa, N° interno, conductor o documento…" oninput="UI.renderFlota()" style="margin:0 0 14px;padding:10px;max-width:420px">
+      <h3 style="font-size:20px;margin:0 0 10px">Vehículos <span id="flCountVeh" style="font-size:14px;color:var(--faint);font-weight:400"></span></h3>
       <div class="tbl-wrap" style="margin-bottom:26px"><table id="tblVehiculos">
         <thead><tr><th>Placa</th><th>Tipo</th><th>N° interno</th><th>Localidad</th><th>Conductores vinculados</th><th></th></tr></thead>
         <tbody></tbody></table></div>
 
-      <h3 style="font-size:20px;margin:0 0 10px">Conductores</h3>
+      <h3 style="font-size:20px;margin:0 0 10px">Conductores <span id="flCountCond" style="font-size:14px;color:var(--faint);font-weight:400"></span></h3>
       <div class="tbl-wrap"><table id="tblConductores">
         <thead><tr><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Localidad</th><th>Vehículos que opera</th><th></th></tr></thead>
         <tbody></tbody></table></div>
@@ -512,11 +513,12 @@ tr:last-child td{border-bottom:none}
       </div>
       <div class="card" style="margin-bottom:18px">
         <h3 style="font-size:19px;margin-bottom:6px">⬆ Cargar consolidado</h3>
-        <p class="note" style="margin-top:0">Sube el Excel <b>CONSOLIDADO</b> con la ficha de los vehículos. Reemplaza el consolidado anterior.</p>
+        <p class="note" style="margin-top:0">Sube el Excel <b>CONSOLIDADO</b> con la ficha de los vehículos. Reemplaza el consolidado anterior y <b>crea en la Flota</b> los vehículos que no existan, vinculando al propietario para que pueda ingresar con placa + documento.</p>
         <input type="file" id="coFile" accept=".xlsx,.xls" style="margin-top:12px;padding:9px">
         <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <button class="btn btn-amber" style="width:auto" id="coBtn" onclick="UI.importarConsolidado()">Procesar y cargar</button>
           <button class="btn btn-ghost" style="width:auto" onclick="UI.exportarConsolidado()">Descargar Excel</button>
+          <button class="btn btn-ghost" style="width:auto" id="coBtnSync" onclick="UI.sincronizarFlota()" title="Crea en la Flota los vehículos de consolidado, cartera y base de documentos que aún no existan">🚗 Crear vehículos en flota</button>
           <span class="loading" id="coStatus"></span>
         </div>
       </div>
