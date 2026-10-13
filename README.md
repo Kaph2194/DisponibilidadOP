@@ -100,6 +100,23 @@ Si quieres que la base se actualice sola cada mañana sin que nadie suba el arch
 
 Para montar la opción 1 necesito saber cómo queda disponible el archivo cada día (¿lo genera un correo? ¿una URL? ¿un Drive?). Dímelo y preparo la función programada.
 
+## Flota creada desde las bases de datos y el consolidado
+
+Cada cargue alimenta la **Flota** automáticamente, para que los conductores puedan ingresar con **Placa + Documento**:
+
+| Cargue | Crea vehículos | Vincula para el ingreso |
+|---|---|---|
+| Base de documentos (`DocumentosAfiliados_*.xlsx`) | Sí | Filas tipo *Conductor* |
+| Conductores (Inf. general) | Sí (Placa #1…#5) | El conductor con cada placa |
+| Cartera | Sí | El **afiliado** con su placa |
+| Consolidado | Sí (con N° interno, clase y empresa) | El **propietario** con su placa |
+
+- Placas y documentos se normalizan (`abc-123` → `ABC123`, `1.023.456` → `1023456`), así el conductor puede escribirlos como quiera al ingresar.
+- Si el propietario es una empresa (SAS, LTDA, S.A., etc.) se crea el vehículo pero no se registra la empresa como conductor.
+- El botón **🚗 Crear vehículos en flota** (pestaña Consolidado) crea lo que falte con los datos ya cargados, sin volver a subir archivos.
+
+**Para activarlo en un proyecto que ya está funcionando:** SQL Editor → pega `supabase/crear_flota_desde_bases.sql` → Run. Al final muestra cuántos vehículos, conductores y vínculos creó con lo que ya estaba cargado. Es seguro correrlo varias veces.
+
 ## Alerta de documentos antes de despachar
 
 Con el cargue diario, el sistema sabe qué documentos de cada vehículo están **vencidos** o **sin cargar**. Los clasifica en dos grupos:

@@ -546,10 +546,32 @@ const UI = {
     $('btnNuevoVeh').style.display  = gestFlota?'':'none';
     $('btnNuevoCond').style.display = gestPers?'':'none';
 
-    // Vehículos
-    $('tblVehiculos').querySelector('tbody').innerHTML = cacheVehiculos.map(v=>{
-      const links = cacheVinculos.filter(x=>x.vehiculo_id===v.id);
-      const chips = links.map(x=>`<span class="chip">${x.conductor_nombre}${gestFlota?`<button title="Desvincular" onclick="UI.desvincular('${x.id}','${x.conductor_nombre}','${v.placa}')">✕</button>`:''}</span>`).join('') || '<span style="color:var(--faint)">Sin conductores</span>';
+    UI.renderFlota();
+  },
+
+  renderFlota(){
+    const gestFlota = puedeGestionarFlota();
+    const gestPers  = puedeGestionarPersonas();
+    const esc = t => String(t??'').replace(/'/g,"\\'");
+    // Índices para no recorrer todos los vínculos por cada fila
+    const porVeh = {}, porCond = {};
+    for (const x of cacheVinculos){
+      (porVeh[x.vehiculo_id] ||= []).push(x);
+      (porCond[x.conductor_id] ||= []).push(x);
+    }
+    const q = ($('flBuscar')?.value||'').toUpperCase().trim();
+    const qp = q.replace(/[^A-Z0-9]/g,'');
+    const MAX = 500;
+
+    let vehs = cacheVehiculos;
+    if (q) vehs = vehs.filter(v =>
+      (qp && (v.placa||'').toUpperCase().replace(/[^A-Z0-9]/g,'').includes(qp)) ||
+      (v.numero_interno||'').toUpperCase().includes(q) ||
+      (porVeh[v.id]||[]).some(x => (x.conductor_nombre||'').toUpperCase().includes(q) || String(x.documento||'').includes(q)));
+    $('flCountVeh').textContent = `(${vehs.length}${q?' de '+cacheVehiculos.length:''})`;
+    $('tblVehiculos').querySelector('tbody').innerHTML = vehs.slice(0,MAX).map(v=>{
+      const links = porVeh[v.id]||[];
+      const chips = links.map(x=>`<span class="chip">${x.conductor_nombre}${gestFlota?`<button title="Desvincular" onclick="UI.desvincular('${x.id}','${esc(x.conductor_nombre)}','${v.placa}')">✕</button>`:''}</span>`).join('') || '<span style="color:var(--faint)">Sin conductores</span>';
       return `<tr style="${v.activo?'':'opacity:.45'}">
         <td><span class="placa sm">${v.placa}</span></td>
         <td>${v.tipo_vehiculo||'—'}</td><td>${v.numero_interno||'—'}</td><td>${v.localidad||'—'}</td>
@@ -558,18 +580,24 @@ const UI = {
           <button class="btn btn-ghost sm" onclick="UI.abrirVincular('${v.id}','${v.placa}')">＋ Conductor</button>
           <button class="btn btn-ghost sm" onclick="UI.abrirVehiculoModal('${v.id}')">Editar</button>`:''}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="6" style="color:var(--faint)">Sin vehículos registrados.</td></tr>';
+    }).join('') + (vehs.length>MAX?`<tr><td colspan="6" style="color:var(--faint)">Mostrando ${MAX} de ${vehs.length}. Usa el buscador para encontrar una placa.</td></tr>`:'')
+      || '<tr><td colspan="6" style="color:var(--faint)">Sin vehículos registrados.</td></tr>';
 
-    // Conductores
-    $('tblConductores').querySelector('tbody').innerHTML = cacheConductores.map(c=>{
-      const vehs = cacheVinculos.filter(x=>x.conductor_id===c.id)
+    let conds = cacheConductores;
+    if (q) conds = conds.filter(c =>
+      (c.nombre||'').toUpperCase().includes(q) || String(c.documento||'').includes(q) ||
+      (qp && (porCond[c.id]||[]).some(x => (x.placa||'').replace(/[^A-Z0-9]/g,'').includes(qp))));
+    $('flCountCond').textContent = `(${conds.length}${q?' de '+cacheConductores.length:''})`;
+    $('tblConductores').querySelector('tbody').innerHTML = conds.slice(0,MAX).map(c=>{
+      const vs = (porCond[c.id]||[])
         .map(x=>`<span class="placa sm" style="margin:2px 3px 2px 0">${x.placa}</span>`).join('') || '<span style="color:var(--faint)">Ninguno</span>';
       return `<tr style="${c.activo?'':'opacity:.45'}">
         <td>${c.nombre}</td><td>${c.documento}</td><td>${c.telefono||'—'}</td><td>${c.localidad||'—'}</td>
-        <td>${vehs}</td>
+        <td>${vs}</td>
         <td>${gestPers?`<button class="btn btn-ghost sm" onclick="UI.abrirConductorModal('${c.id}')">Editar</button>`:''}</td>
       </tr>`;
-    }).join('') || '<tr><td colspan="6" style="color:var(--faint)">Sin conductores registrados.</td></tr>';
+    }).join('') + (conds.length>MAX?`<tr><td colspan="6" style="color:var(--faint)">Mostrando ${MAX} de ${conds.length}. Usa el buscador.</td></tr>`:'')
+      || '<tr><td colspan="6" style="color:var(--faint)">Sin conductores registrados.</td></tr>';
   },
 
   // — Modal vehículo —
@@ -1004,7 +1032,7 @@ const UI = {
         st.textContent=''; btn.disabled=false;
         if (r.error) return toast('Error: '+r.error, true);
         res.style.display='block';
-        res.innerHTML = `✅ <b>Conductores actualizados</b><br>Nuevos: <b>${r.nuevos}</b> · Actualizados: <b>${r.actualizados}</b> · Vínculos nuevos: <b>${r.vinculos_nuevos}</b>`;
+        res.innerHTML = `✅ <b>Conductores actualizados</b><br>Nuevos: <b>${r.nuevos}</b> · Actualizados: <b>${r.actualizados}</b> · Vínculos nuevos: <b>${r.vinculos_nuevos}</b> · Vehículos nuevos en flota: <b>${r.vehiculos_nuevos||0}</b>`;
         toast('Conductores actualizados ✓'); $('adFile').value=''; UI.loadAdminDatos();
         return;
       }
@@ -1093,7 +1121,7 @@ const UI = {
       const r = await Api.importarCartera(file.name, rows);
       st.textContent=''; btn.disabled=false;
       if (r.error) return toast('Error: '+r.error, true);
-      toast(`Cartera actualizada: ${r.filas} registros ✓`); $('caFile').value=''; UI.loadCartera();
+      toast(`Cartera actualizada: ${r.filas} registros · ${r.vehiculos_nuevos||0} vehículos nuevos en flota · ${r.vinculos_nuevos||0} vínculos ✓`); $('caFile').value=''; UI.loadCartera();
     } catch(e){ st.textContent=''; btn.disabled=false; toast('Error: '+e.message, true); }
   },
 
@@ -1152,8 +1180,16 @@ const UI = {
       const r = await Api.importarConsolidado(file.name, rows);
       st.textContent=''; btn.disabled=false;
       if (r.error) return toast('Error: '+r.error, true);
-      toast(`Consolidado actualizado: ${r.filas} vehículos ✓`); $('coFile').value=''; UI.loadConsolidado();
+      toast(`Consolidado: ${r.filas} filas · ${r.vehiculos_nuevos||0} vehículos nuevos en flota · ${r.conductores_nuevos||0} propietarios registrados · ${r.vinculos_nuevos||0} vínculos ✓`); $('coFile').value=''; UI.loadConsolidado();
     } catch(e){ st.textContent=''; btn.disabled=false; toast('Error: '+e.message, true); }
+  },
+  async sincronizarFlota(){
+    const btn=$('coBtnSync'), st=$('coStatus');
+    btn.disabled=true; st.innerHTML='<span class="spin"></span>Creando vehículos en la flota…';
+    const r = await Api.sincronizarFlota();
+    btn.disabled=false; st.textContent='';
+    if (r.error) return toast('Error: '+r.error, true);
+    toast(`Flota sincronizada: ${r.vehiculos_nuevos} vehículos nuevos · ${r.conductores_nuevos} conductores/propietarios · ${r.vinculos_nuevos} vínculos. Total flota: ${r.total_vehiculos} ✓`);
   },
   async exportarConsolidado(){
     const rows = UI._consolidado||[];
