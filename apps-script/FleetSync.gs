@@ -44,6 +44,10 @@ const CONFIG = {
     '/Reportes/CarteraRodamiento': { estado: 'Activos' },
     '/Reportes/RepDocuAfiliados': { estado: 'Activos' }
   },
+  // Campos ocultos que la pagina llena con la opcion marcada (radio) al pulsar el boton
+  PORTAL_OCULTOS_RADIO: {
+    '/Reportes/RepDocuAfiliados': ['tipoInforme']   // "Tipo de Informe": Detallado (marcado por defecto)
+  },
   // Nombre esperado del archivo de cada reporte (se descarta cualquier otro)
   ARCHIVOS_REPORTE: {
     '/Reportes/CarteraRodamiento': /cartera|rodamiento/i,
@@ -102,13 +106,13 @@ const TAREA = {
   documentos: token => {
     const d = descargar_(CONFIG.PORTAL_DOCUMENTOS, 'DocumentosAfiliados', false)[0];
     const filas = filasDocumentosFleet_(d.filas);
-    if (!filas.length) throw new Error('el reporte de documentos llegó sin filas');
+    if (!filas.length) throw new Error('el reporte de documentos llegó sin filas ' + resumenArchivo_(d));
     return enviar_(token, 'importar_cargue', 'Documentos afiliados', d.nombre, filas);
   },
   conductores: token => {
     const d = descargar_(CONFIG.PORTAL_CONDUCTORES, 'ConductoresInfoGral', false)[0];
     const filas = filasConductoresFleet_(d.filas);
-    if (!filas.length) throw new Error('el reporte de conductores llegó sin filas');
+    if (!filas.length) throw new Error('el reporte de conductores llegó sin filas ' + resumenArchivo_(d));
     return enviar_(token, 'importar_conductores', 'Conductores', d.nombre, filas);
   },
   consolidado: token => {
@@ -124,11 +128,16 @@ const TAREA = {
   cartera: token => {
     const d = descargar_(CONFIG.PORTAL_REPORTE, 'CarteraRodamientos', false)[0];
     const filas = filasCarteraFleet_(d.filas);
-    if (!filas.length) throw new Error('el reporte de cartera llegó sin filas');
+    if (!filas.length) throw new Error('el reporte de cartera llegó sin filas ' + resumenArchivo_(d));
     return enviar_(token, 'importar_cartera', 'Cartera', d.nombre, filas);
   }
 };
 
+// Para el registro: cuantas filas trae el archivo y sus primeras lineas (sin datos personales)
+function resumenArchivo_(d) {
+  const f = d.filas || [];
+  return '(' + d.nombre + ': ' + f.length + ' filas; primeras: ' + f.slice(0, 4).map(r => r.filter(c => String(c).trim()).slice(0, 8).join(' | ').slice(0, 160)).join(' // ') + ')';
+}
 function enviar_(token, funcion, tipo, nombreArchivo, filas) {
   const r = rpcFleet_(token, funcion, 'Automatico ' + nombreArchivo, filas);
   registrar_(tipo, filas.length, r, '');
@@ -349,6 +358,13 @@ function intentosDescarga_(html, pagina, ruta, extra, sinRespaldo) {
     // si el campo oculto del estado esta vacio, se llena con la opcion elegida (lo hace el JS del portal)
     const radioEstado = Object.keys(datos).filter(k => /estado/i.test(k) && f.campos.some(c => c.tipo === 'radio' && c.nombre === k))[0];
     if (radioEstado) f.campos.filter(c => c.tipo === 'hidden' && /estado/i.test(c.nombre || '') && !c.valor).forEach(c => datos[c.nombre] = datos[radioEstado]);
+    // ocultos configurados (p.ej. tipoInforme de Documentos Afiliados) = opcion marcada del unico grupo de radios
+    const radios = f.campos.filter(c => c.tipo === 'radio' && c.nombre);
+    (CONFIG.PORTAL_OCULTOS_RADIO && CONFIG.PORTAL_OCULTOS_RADIO[ruta] || []).forEach(n => {
+      if (datos[n]) return;
+      const marcado = radios.filter(c => /\bchecked\b/i.test(c.tag))[0] || radios[0];
+      if (marcado) datos[n] = marcado.valor;
+    });
     const filtros = CONFIG.PORTAL_FILTROS[ruta] || {};
     Object.keys(filtros).forEach(k => f.campos.filter(c => c.tipo === 'select' && new RegExp(k, 'i').test(c.nombre || '')).forEach(c => {
       const o = (c.opciones || []).filter(o => normalizar_(o.texto) === normalizar_(filtros[k]))[0] || (c.opciones || []).filter(o => normalizar_(o.texto).indexOf(normalizar_(filtros[k]).slice(0, 5)) === 0)[0];
@@ -432,7 +448,10 @@ function diagnosticarPortal(ruta) {
   const p = iniciarSesionPortal_(jar, ruta);
   const html = p.r.getContentText();
   console.log('URL tras iniciar sesión: ' + p.url + ' · código ' + p.code + ' · cookies: ' + Object.keys(jar).join(', '));
-  formularios_(html).forEach((f, i) => console.log('Formulario ' + i + ': ' + f.metodo.toUpperCase() + ' ' + f.action + ' · campos: ' + f.campos.map(c => c.tipo + ':' + (c.nombre || '') + (/submit|button/.test(c.tipo) ? '[' + c.tag.replace(/\s+/g, ' ').slice(0, 120) + ']' : '') + (c.opciones ? '{' + c.opciones.slice(0, 15).map(o => o.valor + '=' + o.texto).join(', ') + '}' : '')).join(' | ')));
+  formularios_(html).forEach((f, i) => console.log('Formulario ' + i + ': ' + f.metodo.toUpperCase() + ' ' + f.action + ' · campos: ' + f.campos.map(c => c.tipo + ':' + (c.nombre || '') + (/submit|button/.test(c.tipo) ? '[' + c.tag.replace(/\s+/g, ' ').slice(0, 120) + ']' : '') + (c.opciones ? '{' + c.opciones.slice(0, 15).map(o => o.valor + '=' + o.texto).join(', ') + '}' : '') + (c.tipo === 'radio' || c.tipo === 'hidden' && c.nombre !== '__RequestVerificationToken' ? '=' + c.valor + (/\bchecked\b/i.test(c.tag) ? '(marcado)' : '') : '')).join(' | ')));
+  const ocultos = []; formularios_(html).forEach(f => f.campos.filter(c => c.tipo === 'hidden' && c.nombre && c.nombre !== '__RequestVerificationToken').forEach(c => ocultos.push(c.nombre)));
+  const js = (html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/gi) || []).join('\n').split('\n');
+  console.log('JS que llena campos ocultos:\n' + js.filter(l => ocultos.some(o => l.indexOf(o) >= 0) || /radio-estado/.test(l)).map(l => l.trim().slice(0, 200)).slice(0, 25).join('\n'));
   const enlaces = html.match(/<(a|button)\b[^>]*>[\s\S]{0,80}?<\/(a|button)>/gi) || [];
   console.log('Botones/enlaces: \n' + enlaces.filter(x => /excel|xls|export|descarg|generar|consultar/i.test(x)).map(x => x.replace(/\s+/g, ' ')).join('\n'));
   console.log('Scripts: ' + (html.match(/<script[^>]*src=["'][^"']+["']/gi) || []).join(' '));
@@ -513,7 +532,14 @@ function objetosDesdeFilas_(filas, palabras) {
   const enc = filas[h].map(c => String(c === null || c === undefined ? '' : c).trim());
   return filas.slice(h + 1).map(f => { const o = {}; enc.forEach((k, j) => { if (k && !(k in o)) o[k] = f[j]; }); return o; });
 }
-function pick_(o, claves) { for (let i = 0; i < claves.length; i++) { const v = o[claves[i]]; if (v !== null && v !== undefined && v !== '') return v; } return ''; }
+function pick_(o, claves) {
+  for (let i = 0; i < claves.length; i++) { const v = o[claves[i]]; if (v !== null && v !== undefined && v !== '') return v; }
+  // mismos titulos escritos distinto (PLACA, Placa , Identificación...)
+  const n = k => normalizar_(k).replace(/\s+/g, ' ');
+  if (!o.__norm) { Object.defineProperty(o, '__norm', { value: {}, enumerable: false }); Object.keys(o).forEach(k => { if (!(n(k) in o.__norm)) o.__norm[n(k)] = o[k]; }); }
+  for (let i = 0; i < claves.length; i++) { const v = o.__norm[n(claves[i])]; if (v !== null && v !== undefined && v !== '') return v; }
+  return '';
+}
 function txtF_(v) { return v instanceof Date ? Utilities.formatDate(v, CONFIG.ZONA, 'yyyy-MM-dd') : String(v === null || v === undefined ? '' : v).trim(); }
 function fechaF_(v) { if (!v) return null; const s = isoCelda_(v); return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null; }
 function tsF_(v) {
