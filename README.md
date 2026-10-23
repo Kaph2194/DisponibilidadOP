@@ -93,21 +93,19 @@ El administrador entra a la pestaña **Base de datos** y:
 
 ### Cargue automático diario (activo)
 
-Los cargues se hacen solos desde el backend de Apps Script del proyecto **SpecialTO** (`apps-script/Cartera.gs`, implementado con la cuenta juridico@), que entra al portal SGT, descarga los reportes y llama las mismas funciones que usa esta app:
+Los 4 cargues se hacen solos desde un proyecto de Google Apps Script propio de FleetSync, en la carpeta [`apps-script/`](apps-script/) de este repositorio (cuenta directortransporte@), que entra al portal SGT a las 6, 12 y 17 h, descarga los reportes y llama las mismas funciones que usa esta app:
 
-| Cargue | Función | Reporte del portal | Frecuencia |
-|---|---|---|---|
-| Base de documentos | `importar_cargue` | Documentos Afiliados (Activos, Detallado) | 6, 12 y 17 h |
-| Conductores | `importar_conductores` | Conductores Gral (Activos) | 6, 12 y 17 h |
-| Cartera | `importar_cartera` | Cartera de Rodamientos (Activos) | Cuando cambia |
-| Consolidado | `importar_consolidado` | Parque Automotor, 6 empresas, **solo activos** | Cuando cambia |
+| Cargue | Función | Reporte del portal |
+|---|---|---|
+| Base de documentos | `importar_cargue` | Documentos Afiliados (Activos, Detallado) |
+| Conductores | `importar_conductores` | Conductores Gral (Activos) |
+| Consolidado | `importar_consolidado` | Parque Automotor, 6 empresas, **solo activos** |
+| Cartera | `importar_cartera` | Cartera de Rodamientos (Activos) |
 
-- Inicia sesión con un usuario de FleetSync de rol **admin** o **jefe** (por ejemplo `integracion@specialcar.com.co`, creado desde *Equipo*), cuyas credenciales están en las *Propiedades del script* de Apps Script (`FLEET_USUARIO`, `FLEET_CLAVE`), nunca en este repositorio.
-- Cada cargue queda registrado en la tabla `cargues` (como un cargue manual) con el nombre de archivo `Automatico …`.
-- Los botones de cargue manual siguen funcionando igual.
+- Inicia sesión con un usuario de FleetSync de rol **admin** o **jefe**; las credenciales están en las *Propiedades del script*, nunca en este repositorio.
 - Los Excel **no se guardan en este repositorio** (es público y contienen datos personales).
-
-Instrucciones de activación: `CARTERA_SETUP.md` del repositorio SpecialTO, sección *FleetSync (DisponibilidadOP)*.
+- Es independiente del módulo de Cartera (proyecto SpecialTO).
+- Instalación y diagnóstico: [`apps-script/CARGUE_AUTOMATICO.md`](apps-script/CARGUE_AUTOMATICO.md).
 
 ## Flota creada desde las bases de datos y el consolidado
 
