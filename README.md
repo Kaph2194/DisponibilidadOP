@@ -91,14 +91,23 @@ El administrador entra a la pestaña **Base de datos** y:
 - **⬇ Descargar base actual:** exporta todos los documentos a un Excel con el mismo formato, para respaldo.
 - **Tabla de vencimientos:** muestra los vehículos con documentos vencidos o sin cargar (SOAT, tecnomecánica, licencia, etc.), para no programar un vehículo con papeles al día.
 
-### Cargue automático diario (opcional)
+### Cargue automático diario (activo)
 
-Si quieres que la base se actualice sola cada mañana sin que nadie suba el archivo, hay dos caminos:
+Los cargues se hacen solos desde el backend de Apps Script del proyecto **SpecialTO** (`apps-script/Cartera.gs`, implementado con la cuenta juridico@), que entra al portal SGT, descarga los reportes y llama las mismas funciones que usa esta app:
 
-1. **Si tu plataforma actual puede enviar el Excel a una URL o dejarlo en un storage** (Google Drive, S3, un FTP): se crea una segunda Edge Function programada con **pg_cron** que lo descarga y llama a `importar_cargue` cada día a una hora fija. Requiere que definamos de dónde sale el archivo automáticamente.
-2. **Si el Excel solo se puede descargar manualmente** de tu plataforma: lo más práctico es el botón (10 segundos al día).
+| Cargue | Función | Reporte del portal | Frecuencia |
+|---|---|---|---|
+| Base de documentos | `importar_cargue` | Documentos Afiliados (Activos, Detallado) | 6, 12 y 17 h |
+| Conductores | `importar_conductores` | Conductores Gral (Activos) | 6, 12 y 17 h |
+| Cartera | `importar_cartera` | Cartera de Rodamientos (Activos) | Cuando cambia |
+| Consolidado | `importar_consolidado` | Parque Automotor, 6 empresas, **solo activos** | Cuando cambia |
 
-Para montar la opción 1 necesito saber cómo queda disponible el archivo cada día (¿lo genera un correo? ¿una URL? ¿un Drive?). Dímelo y preparo la función programada.
+- Inicia sesión con un usuario de FleetSync de rol **admin** o **jefe** (por ejemplo `integracion@specialcar.com.co`, creado desde *Equipo*), cuyas credenciales están en las *Propiedades del script* de Apps Script (`FLEET_USUARIO`, `FLEET_CLAVE`), nunca en este repositorio.
+- Cada cargue queda registrado en la tabla `cargues` (como un cargue manual) con el nombre de archivo `Automatico …`.
+- Los botones de cargue manual siguen funcionando igual.
+- Los Excel **no se guardan en este repositorio** (es público y contienen datos personales).
+
+Instrucciones de activación: `CARTERA_SETUP.md` del repositorio SpecialTO, sección *FleetSync (DisponibilidadOP)*.
 
 ## Flota creada desde las bases de datos y el consolidado
 
