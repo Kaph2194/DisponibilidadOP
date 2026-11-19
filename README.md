@@ -140,9 +140,20 @@ La alerta aparece en varios puntos:
 
 El bloqueo no es absoluto (operaciones puede despachar bajo su responsabilidad con la confirmación), pero nunca pasa desapercibido. Si prefieres que sea un bloqueo **total** (imposible asignar hasta regularizar), se puede endurecer con una sola línea; dime y lo cambio.
 
+## Exportar a Excel (Programación y Validación)
+
+Ambas pantallas tienen un botón **⬇ Exportar Excel** y un buscador (placa, conductor, documento, N° interno o localidad). El Excel contiene **lo que se ve en pantalla**: si hay una búsqueda activa, solo esos resultados.
+
+| Pantalla | Archivo | Hojas |
+|---|---|---|
+| **Programación** | `Programacion_AAAA-MM-DD.xlsx` | **Programación**: una fila por servicio asignado (o una fila "Sin asignar"), con turno, servicio, zona, horas y pico y placa · **Sin asignar**: vehículos sin servicio o con horas libres · **Resumen**: KPIs del día, pico y placa, quién exportó |
+| **Validación** | `Validacion_<estado>_<desde>_a_<hasta>.xlsx` | **Disponibilidades**: fecha, horas, vehículo, conductor, estado, fecha de validación, notas, motivo de cancelación · **Resumen**: conteo por estado |
+
+Las columnas traen filtro automático y ancho ajustado. No requiere cambios en la base de datos.
+
 ## Pico y placa (servicio transporte especial)
 
-La programación muestra automáticamente el **pico y placa del día** para servicio de transporte especial en Bogotá: un banner con los dos dígitos restringidos, y cada vehículo cuya placa esté restringida se marca con 🚦 "Pico y placa hoy". La regla es la rotación oficial de parejas de dígitos (lun-sáb, 5:30am–9:00pm; domingos y festivos no aplica). Incluye un enlace a pyphoy.com para verificar. Si el gobierno cambia el decreto (próxima revisión oficial: enero 2027), basta actualizar el ancla en `js/app.js`.
+La programación muestra automáticamente el **pico y placa del día** para servicio de transporte especial en Bogotá: un banner con los dos dígitos restringidos, y cada vehículo cuya placa esté restringida se marca con 🚦 "Pico y placa hoy". La regla es la rotación oficial de parejas de dígitos (lun-sáb, 5:30am–9:00pm; domingos y festivos no aplica). Incluye un enlace a pyphoy.com para verificar. Si el gobierno cambia el decreto (próxima revisión oficial: enero 2027), basta actualizar el ancla en `js/app.js`. Los festivos están cargados para 2026 y 2027 (constante `FESTIVOS`); a finales de 2027 hay que añadir los de 2028.
 
 ## Conductores anclados a placa
 

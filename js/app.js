@@ -24,6 +24,43 @@ let cacheConductores=[], cacheVehiculos=[], cacheVinculos=[], misVehs=[];
 const $ = id => document.getElementById(id);
 const hoyISO = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 
+// Escapa texto antes de meterlo en innerHTML (notas, nombres, servicios los
+// escriben personas: sin esto, un "<img onerror=…>" en una nota se ejecutaría
+// en el navegador del analista o del coordinador).
+function escHtml(v){
+  return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// Para valores que van dentro de un onclick="UI.fn('…')"
+function escJs(v){ return escHtml(String(v ?? '').replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
+
+// ── Exportación a Excel (usa SheetJS, ya cargado en index.html) ──
+function descargarExcel(nombreArchivo, hojas){
+  // hojas: [{ nombre, filas:[{col:valor}] }]
+  const wb = XLSX.utils.book_new();
+  hojas.forEach(h=>{
+    const ws = h.filas.length ? XLSX.utils.json_to_sheet(h.filas) : XLSX.utils.aoa_to_sheet([['Sin datos']]);
+    if (h.filas.length){
+      const cols = Object.keys(h.filas[0]);
+      ws['!cols'] = cols.map(c => ({ wch: Math.min(45, Math.max(c.length, ...h.filas.map(f=>String(f[c]??'').length)) + 2) }));
+      ws['!autofilter'] = { ref: ws['!ref'] };
+    }
+    XLSX.utils.book_append_sheet(wb, ws, h.nombre.slice(0,31));
+  });
+  XLSX.writeFile(wb, nombreArchivo);
+}
+function filtraTexto(rows, q){
+  q = (q||'').toUpperCase().trim();
+  if (!q) return rows;
+  const qp = q.replace(/[^A-Z0-9]/g,'');
+  return rows.filter(r =>
+    (qp && (r.placa||'').toUpperCase().replace(/[^A-Z0-9]/g,'').includes(qp)) ||
+    (r.conductor_nombre||'').toUpperCase().includes(q) ||
+    String(r.documento||'').includes(q) ||
+    (r.numero_interno||'').toUpperCase().includes(q) ||
+    (r.localidad||'').toUpperCase().includes(q));
+}
+const ESTADO_LBL = { pendiente:'Pendiente', validada:'Validada', rechazada:'Rechazada', cancelada:'Cancelada' };
+
 function toast(msg, isErr){
   const t=$('toast'); t.textContent=msg; t.className=isErr?'err':''; t.style.display='block';
   clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 4200);
@@ -87,16 +124,21 @@ const puedeVerReporteria = () => ['jefe','admin'].includes(ME.profile.role);
 // Festivos y domingos: "No aplica" para circular.
 // Ancla: viernes 14/08/2026 → restringe 3 y 4 (verificado pyphoy.com).
 const PYP_PARES = [[1,2],[3,4],[5,6],[7,8],[9,0]];
-const FESTIVOS_2026 = new Set([
+const FESTIVOS = new Set([
+  // 2026
   '2026-01-01','2026-01-12','2026-03-23','2026-04-02','2026-04-03','2026-05-01',
   '2026-05-18','2026-06-08','2026-06-15','2026-06-29','2026-07-20','2026-08-07',
-  '2026-08-17','2026-10-12','2026-11-02','2026-11-16','2026-12-08','2026-12-25'
+  '2026-08-17','2026-10-12','2026-11-02','2026-11-16','2026-12-08','2026-12-25',
+  // 2027 (Ley Emiliani; Pascua 28/03/2027)
+  '2027-01-01','2027-01-11','2027-03-22','2027-03-25','2027-03-26','2027-05-01',
+  '2027-05-10','2027-05-31','2027-06-07','2027-07-05','2027-07-20','2027-08-07',
+  '2027-08-16','2027-10-18','2027-11-01','2027-11-15','2027-12-08','2027-12-25'
 ]);
 function isoLocal(d){
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 function esDomingoOFestivo(d){
-  return d.getDay()===0 || FESTIVOS_2026.has(isoLocal(d));
+  return d.getDay()===0 || FESTIVOS.has(isoLocal(d));
 }
 // La rotación avanza todos los días lun-sáb, festivos incluidos (solo domingos no)
 function diasHabilesEntre(desde, hasta){
@@ -111,6 +153,8 @@ function diasHabilesEntre(desde, hasta){
 }
 function picoYPlacaDe(fecha){
   const d = parseFechaLocal(fecha); d.setHours(12,0,0,0);
+  // Fecha inválida: sin esta guarda, diasHabilesEntre() nunca termina y congela la página
+  if (isNaN(d)) return { aplica:false, digitos:[], texto:'Fecha no válida' };
   if (esDomingoOFestivo(d)) return { aplica:false, digitos:[], texto:'No aplica (domingo/festivo)' };
   const ancla = new Date('2026-08-14T12:00:00'); // viernes → índice 1 (3,4)
   const idxAncla = 1;
@@ -318,8 +362,8 @@ const UI = {
     $('cProximos').innerHTML = prox.length ? prox.slice(0,6).map(t=>{
       const al=docAlerta(t);
       return `<div class="item"><div class="info">
-        <div class="t1"><span class="placa sm">${t.placa}</span> &nbsp;${fmtRango(t)}</div>
-        <div class="t2">${t.localidad||'Sin localidad'}${t.asignacion_id?' · <span style="color:var(--green)">✓ Turno programado</span>':''}</div>
+        <div class="t1"><span class="placa sm">${escHtml(t.placa)}</span> &nbsp;${fmtRango(t)}</div>
+        <div class="t2">${escHtml(t.localidad||'Sin localidad')}${t.asignacion_id?' · <span style="color:var(--green)">✓ Turno programado</span>':''}</div>
         ${al.nivel==='block'?`<div class="t2" style="color:var(--red);margin-top:4px">⛔ Tu vehículo tiene documentos pendientes: ${al.detalle||''}. Repórtalo a operaciones.</div>`:''}
       </div>${estadoBadge(t)}</div>`;
     }).join('')
@@ -329,12 +373,12 @@ const UI = {
       const puedeCancelar = t.estado!=='cancelada' && t.estado!=='rechazada' && !t.asignacion_id && new Date(t.inicio)>new Date();
       return `<div class="item"><div class="info">
         <div class="t1"><span class="placa sm">${t.placa}</span> &nbsp;${fmtRango(t)} <span style="color:var(--faint)">· ${horasEntre(t.inicio,t.fin)} h</span></div>
-        <div class="t2">${t.localidad||''}${t.notas?' · '+t.notas:''}${t.estado==='cancelada'&&t.motivo_cancelacion?' · Motivo: '+t.motivo_cancelacion:''}</div>
+        <div class="t2">${escHtml(t.localidad||'')}${t.notas?' · '+escHtml(t.notas):''}${t.estado==='cancelada'&&t.motivo_cancelacion?' · Motivo: '+escHtml(t.motivo_cancelacion):''}</div>
         ${t.asignacion_id?'<div class="t2" style="color:var(--green);margin-top:3px">✓ Turno asignado — servicio programado</div>':''}
         ${!t.asignacion_id&&t.estado==='validada'?'<div class="t2" style="color:var(--muted);font-size:12px">Pendiente de programación</div>':''}
       </div>
       <div class="acts">${estadoBadge(t)}
-        ${puedeCancelar?`<button class="btn btn-red-o sm" onclick="UI.abrirCancelar('${t.id}','${t.placa} · ${fmtRango(t)}')">Cancelar</button>`:''}
+        ${puedeCancelar?`<button class="btn btn-red-o sm" onclick="UI.abrirCancelar('${t.id}','${escJs(t.placa+' · '+fmtRango(t))}')">Cancelar</button>`:''}
         ${t.asignacion_id&&!puedeCancelar&&t.estado!=='cancelada'?'<span class="note" style="color:var(--faint);font-size:11px">No se puede cancelar: ya programado</span>':''}
       </div></div>`;
     }).join('') : '<div class="empty">Aún no has registrado disponibilidades.</div>';
@@ -423,10 +467,19 @@ const UI = {
     const [d1] = rangoDia($('avDesde').value||hoyISO());
     const [,d2] = rangoDia($('avHasta').value||hoyISO());
     const filtro = $('avEstado').value;
+    $('avList').innerHTML = '<div class="loading"><span class="spin"></span>Cargando…</div>';
     let rows = await Api.disponibilidadesRangoTodos(d1,d2);
     if (filtro) rows = rows.filter(r=>r.estado===filtro);
+    UI._avAll = rows;
+    UI.renderValidacion();
+  },
+
+  renderValidacion(){
+    const rows = filtraTexto(UI._avAll||[], $('avBuscar')?.value);
+    const total = (UI._avAll||[]).length;
+    $('avCount').textContent = total ? `${rows.length}${rows.length!==total?' de '+total:''} disponibilidad(es)` : '';
     const soyValidador = ['analista','coordinador','jefe','admin'].includes(ME.profile.role);
-    UI._avRows = rows; // guardar para selección múltiple
+    UI._avRows = rows; // guardar para selección múltiple y exportación
 
     // Mostrar barra de selección solo cuando hay pendientes y puede validar
     const hayPendientes = soyValidador && rows.some(r=>r.estado==='pendiente');
@@ -443,8 +496,8 @@ const UI = {
             onchange="UI.onCheckChange()">
         </label>` : '<div style="width:28px;flex-shrink:0"></div>'}
         <div class="info" style="flex:1">
-          <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}</div>
-          <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''}${r.notas?' · '+r.notas:''}</div>
+          <div class="t1"><span class="placa sm">${escHtml(r.placa)}</span> &nbsp;${escHtml(r.conductor_nombre)}</div>
+          <div class="t2">${fmtRango(r)} · ${escHtml(r.localidad||'—')} · ${escHtml(r.tipo_vehiculo||'')} ${escHtml(r.numero_interno||'')}${r.notas?' · '+escHtml(r.notas):''}</div>
         </div>
         <div class="acts">${estadoBadge(r)}
           ${soyValidador && r.estado==='pendiente' ? `
@@ -500,6 +553,40 @@ const UI = {
     if (error) return toast(Api.friendly(error), true);
     toast(estado==='validada'?'Disponibilidad validada ✓':'Disponibilidad rechazada');
     UI.loadValidacion();
+  },
+
+  // Exporta exactamente lo que se ve en pantalla (rango, estado y búsqueda)
+  exportarValidacion(){
+    const rows = UI._avRows||[];
+    if (!rows.length) return toast('No hay disponibilidades para exportar con ese filtro', true);
+    const filas = rows.map(r=>({
+      'Fecha': isoLocal(new Date(r.inicio)),
+      'Día': DIAS[new Date(r.inicio).getDay()],
+      'Hora inicio': fmtHora(r.inicio),
+      'Hora fin': fmtHora(r.fin),
+      'Horas': horasEntre(r.inicio, r.fin),
+      'Placa': r.placa,
+      'N° interno': r.numero_interno||'',
+      'Tipo vehículo': r.tipo_vehiculo||'',
+      'Conductor': r.conductor_nombre,
+      'Documento': r.documento||'',
+      'Teléfono': r.telefono||'',
+      'Localidad': r.localidad||'',
+      'Estado': ESTADO_LBL[r.estado]||r.estado,
+      'Validada el': r.validada_at ? new Date(r.validada_at).toLocaleString('es-CO') : '',
+      'Notas': r.notas||'',
+      'Motivo cancelación': r.motivo_cancelacion||''
+    }));
+    const resumen = Object.entries(rows.reduce((o,r)=>{ o[r.estado]=(o[r.estado]||0)+1; return o; },{}))
+      .map(([e,n])=>({ 'Estado': ESTADO_LBL[e]||e, 'Cantidad': n }));
+    resumen.push({ 'Estado':'Total', 'Cantidad': rows.length });
+    const desde=$('avDesde').value||hoyISO(), hasta=$('avHasta').value||hoyISO();
+    const est = $('avEstado').value || 'todas';
+    descargarExcel(`Validacion_${est}_${desde}_a_${hasta}.xlsx`, [
+      { nombre:'Disponibilidades', filas },
+      { nombre:'Resumen', filas: resumen }
+    ]);
+    toast(`Excel descargado: ${rows.length} disponibilidad(es) ✓`);
   },
 
   async loadCrearAnalista(){
@@ -714,78 +801,161 @@ const UI = {
     }
 
     const [d1,d2] = rangoDia(fechaSel);
+    $('prPendientes').innerHTML = '<div class="loading"><span class="spin"></span>Cargando…</div>';
     // Todos los roles usan la consulta lean en programación (más rápida)
     // Solo la Reportería usa la vista completa con docs/cartera
-    const rows = await Api.disponibilidadesRangoLean(d1,d2);
-    // Sin asignar: no tiene ninguna asignación, O tiene parcial con horas libres
+    UI._prAll = await Api.disponibilidadesRangoLean(d1,d2);
+    UI._prFecha = fechaSel;
+    UI.renderProgramacion();
+  },
+
+  // Divide las disponibilidades del día en "sin asignar" (o con horas libres) y "asignadas"
+  _prClasificar(rows){
     const totalH = r => horasEntre(r.inicio, r.fin);
     const sin  = rows.filter(r=>!r.asignacion_id ||
       (r.horas_asignadas && r.horas_asignadas < totalH(r) - 0.1));
     const asig = rows.filter(r=>r.asignacion_id);
-    $('prKpiVal').textContent=rows.length;
-    $('prKpiAsig').textContent=asig.length;
-    $('prKpiSin').textContent=sin.length;
+    return { sin, asig };
+  },
+
+  renderProgramacion(){
+    const fechaSel = UI._prFecha || $('prFecha').value || hoyISO();
+    const todas = UI._prAll||[];
+    const rows = filtraTexto(todas, $('prBuscar')?.value);
+    UI._prRows = rows; // lo que se ve: también es lo que se exporta
+    // Los KPIs siempre muestran el día completo; las listas respetan la búsqueda
+    const k = UI._prClasificar(todas);
+    $('prKpiVal').textContent=todas.length;
+    $('prKpiAsig').textContent=k.asig.length;
+    $('prKpiSin').textContent=k.sin.length;
+    $('prCount').textContent = rows.length!==todas.length ? `Mostrando ${rows.length} de ${todas.length}` : '';
+    const { sin, asig } = UI._prClasificar(rows);
+    const esAdmin = ME.profile.role === 'admin';
 
     $('prPendientes').innerHTML = sin.length ? sin.map(r=>{
       const al = docAlerta(r);
       const bloqueado = al.nivel==='block';
       const restringida = placaRestringida(r.placa, fechaSel);
       const cart = carteraAlerta(r);
+      const info = `${r.placa} · ${fmtRango(r)}`;
       // Solo admin ve el detalle de documentos y cartera en la operación
-      const esAdmin = ME.profile.role === 'admin';
       return `<div class="item" style="${bloqueado?'border-color:var(--red);border-left:3px solid var(--red)':(restringida||cart.hay?'border-left:3px solid var(--amber)':'')}"><div class="info">
-        <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre}
+        <div class="t1"><span class="placa sm">${escHtml(r.placa)}</span> &nbsp;${escHtml(r.conductor_nombre)}
           ${restringida?'<span class="badge b-pendiente" style="margin-left:6px">🚦 Pico y placa hoy</span>':''}</div>
-        <div class="t2">${fmtRango(r)} · ${r.localidad||'—'} · ${r.tipo_vehiculo||''} ${r.numero_interno||''} · Tel: ${r.telefono||'—'}</div>
+        <div class="t2">${fmtRango(r)} · ${escHtml(r.localidad||'—')} · ${escHtml(r.tipo_vehiculo||'')} ${escHtml(r.numero_interno||'')} · Tel: ${escHtml(r.telefono||'—')}</div>
+        ${r.asignacion_id?`<div class="t2" style="color:var(--amber)">Parcial: ${Math.round((r.horas_asignadas||0)*10)/10}h asignadas de ${horasEntre(r.inicio,r.fin)}h</div>`:''}
         ${esAdmin?`<div style="margin-top:6px">${docBadge(r)}${cart.hay?` <span class="badge b-cancelada" style="margin-left:4px">${cart.texto}</span>`:''}</div>`:''}
-        ${esAdmin&&bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${al.detalle}</div>`:''}
+        ${esAdmin&&bloqueado&&al.detalle?`<div class="t2" style="color:var(--red);margin-top:4px">Pendiente: ${escHtml(al.detalle)}</div>`:''}
       </div>
-      <div class="acts"><span class="badge b-sin">Sin asignar</span>
-        <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${r.placa} · ${fmtFecha(r.inicio)}')">Historial</button>
-        ${puedeAsignar()?`<button class="btn ${bloqueado&&esAdmin?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',${bloqueado&&esAdmin},'${(al.detalle||'').replace(/'/g,'')}','${r.inicio}','${r.fin}')">Asignar</button>`:''}
+      <div class="acts"><span class="badge b-sin">${r.asignacion_id?'Horas libres':'Sin asignar'}</span>
+        <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${escJs(r.placa+' · '+fmtFecha(r.inicio))}')">Historial</button>
+        ${puedeAsignar()?`<button class="btn ${bloqueado&&esAdmin?'btn-red-o':'btn-amber'} sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${escJs(info)}','${escJs(r.localidad||'')}',${bloqueado&&esAdmin},'${escJs(al.detalle||'')}','${r.inicio}','${r.fin}')">Asignar</button>`:''}
       </div></div>`;
     }).join('')
-      : '<div class="empty">🎉 No hay vehículos validados sin asignar para este día.</div>';
+      : `<div class="empty">${rows.length!==todas.length?'Ningún resultado pendiente para esa búsqueda.':'🎉 No hay vehículos validados sin asignar para este día.'}</div>`;
 
-    // Lista "Ya programadas" — agrupa por disponibilidad, muestra todos sus rangos
-    // Agrupa por disponibilidad
-    const porDisp = {};
-    asig.forEach(r=>{
-      if (!porDisp[r.id]) porDisp[r.id] = { ...r, servicios:[] };
-      // Parsear asignaciones_json si viene del servidor
-      try {
-        const aa = typeof r.asignaciones_json === 'string' ? JSON.parse(r.asignaciones_json) : r.asignaciones_json;
-        if (aa) porDisp[r.id].servicios = aa;
-      } catch{}
-    });
-
-    $('prAsignadas').innerHTML = Object.values(porDisp).length ? Object.values(porDisp).map(r=>{
+    // Lista "Ya programadas" — una tarjeta por disponibilidad con todos sus servicios
+    $('prAsignadas').innerHTML = asig.length ? asig.map(r=>{
       const totalH = horasEntre(r.inicio, r.fin);
       const asigH = Math.round((r.horas_asignadas||0)*10)/10;
       const libre = Math.round((totalH - asigH)*10)/10;
-      const servicios = r.servicios && r.servicios.length ? r.servicios : (r.asignacion_id?[{id:r.asignacion_id, servicio:r.servicio, zona:r.zona, inicio:null, fin:null, notas:r.asignacion_notas, observacion_baja:r.observacion_baja}]:[]);
+      const servicios = UI._prServicios(r);
+      const info = `${r.placa} · ${fmtRango(r)}`;
       return `<div class="item" style="flex-direction:column;align-items:stretch"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="t1"><span class="placa sm">${r.placa}</span> &nbsp;${r.conductor_nombre} &nbsp;<span style="color:var(--faint)">${fmtRango(r)}</span></div>
+          <div class="t1"><span class="placa sm">${escHtml(r.placa)}</span> &nbsp;${escHtml(r.conductor_nombre)} &nbsp;<span style="color:var(--faint)">${fmtRango(r)}</span></div>
           <div class="t2">Turno: ${totalH}h · Asignado: ${asigH}h${libre>0?` · <span style="color:var(--amber)">Libre: ${libre}h</span>`:' · <span style="color:var(--green)">Turno completo ✓</span>'}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${libre>0&&puedeAsignar()?`<button class="btn btn-amber sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${r.placa} · ${fmtRango(r)}','${r.localidad||''}',false,'','${r.inicio}','${r.fin}')">＋ Agregar servicio</button>`:''}
-          <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${r.placa} · ${fmtFecha(r.inicio)}')">Historial</button>
+          ${libre>0&&puedeAsignar()?`<button class="btn btn-amber sm" style="width:auto" onclick="UI.abrirAsignar('${r.id}','${escJs(info)}','${escJs(r.localidad||'')}',false,'','${r.inicio}','${r.fin}')">＋ Agregar servicio</button>`:''}
+          <button class="btn btn-ghost sm" onclick="UI.verHistorial('${r.id}','${escJs(r.placa+' · '+fmtFecha(r.inicio))}')">Historial</button>
         </div>
       </div>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
         ${servicios.map(s=>`<div style="background:var(--panel2);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-weight:600;font-size:13.5px">🟢 ${s.servicio||'Sin nombre'}${s.inicio&&s.fin?` · ${fmtHora(s.inicio)} → ${fmtHora(s.fin)}`:''}${s.zona?' · '+s.zona:''}</div>
-            ${s.notas?`<div class="t2">${s.notas}</div>`:''}
-            ${s.observacion_baja?`<div style="color:var(--amber);font-size:12px">↩ ${s.observacion_baja}</div>`:''}
+            <div style="font-weight:600;font-size:13.5px">🟢 ${escHtml(s.servicio||'Sin nombre')}${s.inicio&&s.fin?` · ${fmtHora(s.inicio)} → ${fmtHora(s.fin)}`:''}${s.zona?' · '+escHtml(s.zona):''}</div>
+            ${s.notas?`<div class="t2">${escHtml(s.notas)}</div>`:''}
+            ${s.observacion_baja?`<div style="color:var(--amber);font-size:12px">↩ ${escHtml(s.observacion_baja)}</div>`:''}
           </div>
-          ${puedeAsignar()?`<button class="btn btn-red-o sm" onclick="UI.abrirQuitarAsig('${s.id}','${r.id}','${r.placa}')">Quitar</button>`:''}
+          ${puedeAsignar()?`<button class="btn btn-red-o sm" onclick="UI.abrirQuitarAsig('${s.id}','${r.id}','${escJs(r.placa)}')">Quitar</button>`:''}
         </div>`).join('')}
       </div></div>`;
     }).join('')
-      : '<div class="empty">Ninguna asignación creada aún para este día.</div>';
+      : `<div class="empty">${rows.length!==todas.length?'Ninguna programada coincide con la búsqueda.':'Ninguna asignación creada aún para este día.'}</div>`;
+  },
+
+  // Servicios activos de una disponibilidad, en orden de hora
+  _prServicios(r){
+    let aa = r.asignaciones_json;
+    try { if (typeof aa === 'string') aa = JSON.parse(aa); } catch { aa = null; }
+    const lista = (aa && aa.length) ? aa
+      : (r.asignacion_id ? [{id:r.asignacion_id, servicio:r.servicio, zona:r.zona, inicio:null, fin:null, notas:r.asignacion_notas, observacion_baja:r.observacion_baja}] : []);
+    return [...lista].sort((a,b)=>String(a.inicio||'').localeCompare(String(b.inicio||'')));
+  },
+
+  // Exporta la programación del día (respeta la búsqueda activa)
+  exportarProgramacion(){
+    const rows = UI._prRows||[];
+    const fecha = UI._prFecha || $('prFecha').value || hoyISO();
+    if (!rows.length) return toast('No hay disponibilidades validadas para exportar en este día', true);
+    const pp = picoYPlacaDe(fecha);
+    const base = r => ({
+      'Fecha': isoLocal(new Date(r.inicio)),
+      'Placa': r.placa,
+      'N° interno': r.numero_interno||'',
+      'Tipo vehículo': r.tipo_vehiculo||'',
+      'Conductor': r.conductor_nombre,
+      'Documento': r.documento||'',
+      'Teléfono': r.telefono||'',
+      'Localidad': r.localidad||'',
+      'Turno inicio': fmtHora(r.inicio),
+      'Turno fin': fmtHora(r.fin),
+      'Horas turno': horasEntre(r.inicio, r.fin),
+      'Pico y placa': placaRestringida(r.placa, fecha) ? 'Sí' : 'No'
+    });
+    const estadoProg = r => {
+      if (!r.asignacion_id) return 'Sin asignar';
+      return (r.horas_asignadas||0) < horasEntre(r.inicio,r.fin) - 0.1 ? 'Parcial' : 'Completa';
+    };
+    // Hoja 1: una fila por servicio (o una fila vacía si no tiene servicio)
+    const detalle = [];
+    rows.forEach(r=>{
+      const servs = UI._prServicios(r);
+      if (!servs.length){
+        detalle.push({ ...base(r), 'Programación':'Sin asignar', 'Servicio / ruta':'', 'Zona':'',
+          'Servicio inicio':'', 'Servicio fin':'', 'Horas servicio':'', 'Notas servicio':'', 'Notas disponibilidad': r.notas||'' });
+        return;
+      }
+      servs.forEach(s=>{
+        const ini = s.inicio || r.inicio, fin = s.fin || r.fin;
+        detalle.push({ ...base(r), 'Programación': estadoProg(r), 'Servicio / ruta': s.servicio||'', 'Zona': s.zona||'',
+          'Servicio inicio': fmtHora(ini), 'Servicio fin': fmtHora(fin), 'Horas servicio': horasEntre(ini, fin),
+          'Notas servicio': s.notas||'', 'Notas disponibilidad': r.notas||'' });
+      });
+    });
+    // Hoja 2: lo que falta por cubrir
+    const { sin } = UI._prClasificar(rows);
+    const pendientes = sin.map(r=>({ ...base(r),
+      'Horas asignadas': Math.round((r.horas_asignadas||0)*10)/10,
+      'Horas libres': Math.round((horasEntre(r.inicio,r.fin)-(r.horas_asignadas||0))*10)/10 }));
+    // Hoja 3: resumen del día
+    const k = UI._prClasificar(rows);
+    const resumen = [
+      { 'Concepto':'Fecha', 'Valor': fecha },
+      { 'Concepto':'Validadas del día', 'Valor': rows.length },
+      { 'Concepto':'Asignadas', 'Valor': k.asig.length },
+      { 'Concepto':'Sin asignar o con horas libres', 'Valor': k.sin.length },
+      { 'Concepto':'Pico y placa', 'Valor': pp.texto },
+      { 'Concepto':'Búsqueda aplicada', 'Valor': ($('prBuscar')?.value||'').trim() || '—' },
+      { 'Concepto':'Exportado', 'Valor': new Date().toLocaleString('es-CO') + ' · ' + (ME.profile.full_name||ME.session.user.email) }
+    ];
+    descargarExcel(`Programacion_${fecha}.xlsx`, [
+      { nombre:'Programación', filas: detalle },
+      { nombre:'Sin asignar', filas: pendientes },
+      { nombre:'Resumen', filas: resumen }
+    ]);
+    toast(`Excel descargado: ${rows.length} vehículo(s) ✓`);
   },
 
   abrirAsignar(dispId, info, loc, bloqueado, detalle, inicioISO, finISO){
@@ -823,19 +993,28 @@ const UI = {
 
     // Calcular timestamps del rango seleccionado
     const rango = UI._asigRango || {};
-    const fechaBase = rango.inicio ? new Date(rango.inicio).toISOString().slice(0,10) : null;
+    // Fecha LOCAL del inicio del turno (antes se tomaba en UTC: un turno de las
+    // 20:00 en Bogotá quedaba con la fecha del día siguiente y no se podía asignar)
+    const fechaBase = rango.inicio ? isoLocal(new Date(rango.inicio)) : null;
     let inicioTS = null, finTS = null;
     const hIni = $('mAsigInicio').value, hFin = $('mAsigFin').value;
+    if ((hIni && !hFin) || (!hIni && hFin))
+      return toast('Indica hora de inicio y de fin del servicio, o deja ambas vacías para el turno completo', true);
     if (fechaBase && hIni && hFin){
-      inicioTS = new Date(fechaBase + 'T' + hIni + ':00').toISOString();
-      // Si fin < inicio en horas, el turno cruza medianoche
       const dIni = new Date(fechaBase + 'T' + hIni + ':00');
-      let dFin = new Date(fechaBase + 'T' + hFin + ':00');
+      // Turno nocturno (ej. 22:00→06:00): un servicio de 02:00 pertenece al día siguiente
+      if (rango.inicio && dIni < new Date(rango.inicio)) dIni.setDate(dIni.getDate()+1);
+      // Si fin < inicio en horas, el servicio cruza medianoche
+      const dFin = new Date(dIni); const [fh,fm] = hFin.split(':').map(Number);
+      dFin.setHours(fh, fm, 0, 0);
       if (dFin <= dIni) dFin.setDate(dFin.getDate()+1);
+      inicioTS = dIni.toISOString();
       finTS = dFin.toISOString();
       // Validar que esté dentro del turno del conductor
       if (rango.inicio && rango.fin){
-        if (inicioTS < rango.inicio || finTS > rango.fin)
+        // Comparar como fechas: Supabase devuelve "…+00:00" y toISOString "….000Z";
+        // como texto, un servicio que termina justo al final del turno se rechazaba
+        if (dIni < new Date(rango.inicio) || dFin > new Date(rango.fin))
           return toast(`El rango (${hIni}→${hFin}) debe estar dentro del turno del conductor (${fmtHora(rango.inicio)}→${fmtHora(rango.fin)})`, true);
       }
     }
@@ -880,8 +1059,8 @@ const UI = {
           <b style="text-transform:capitalize">${h.accion}</b>
           <span style="color:var(--muted);font-size:12px">${new Date(h.created_at).toLocaleString('es-CO')}</span>
         </div>
-        <div style="color:var(--muted);font-size:13px;margin-top:3px">Por: ${h.hecho_por_nombre||'—'}${h.servicio?' · Servicio: '+h.servicio:''}</div>
-        ${h.observacion?`<div style="color:var(--amber);font-size:12.5px;margin-top:3px">↩ Observación: ${h.observacion}</div>`:''}
+        <div style="color:var(--muted);font-size:13px;margin-top:3px">Por: ${escHtml(h.hecho_por_nombre||'—')}${h.servicio?' · Servicio: '+escHtml(h.servicio):''}</div>
+        ${h.observacion?`<div style="color:var(--amber);font-size:12.5px;margin-top:3px">↩ Observación: ${escHtml(h.observacion)}</div>`:''}
       </div>`).join('')
       : '<div class="empty" style="color:var(--muted)">Esta disponibilidad aún no tiene historial de asignaciones.<br><small>El historial se registra cuando se asigna, quita o reasigna un servicio.</small></div>';
   },
