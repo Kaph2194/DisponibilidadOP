@@ -258,7 +258,7 @@ tr:last-child td{border-bottom:none}
 
         <label>Hora de inicio → hora de fin</label>
         <div class="hour-rail" id="ndHoras"></div>
-        <p class="note">Toca la hora de inicio y luego la de fin. Si el fin es menor que el inicio, el turno cruza la medianoche.</p>
+        <p class="note">Toca la hora de inicio y luego la de fin. Si la hora de fin es menor o igual a la de inicio, el turno es <b>partido</b>: empieza el día marcado y termina al día siguiente (ej. 22:00 → 06:00). Cada día marcado es el día en que <b>empieza</b> el turno.</p>
 
         <label for="ndNotas">Notas (opcional)</label>
         <textarea id="ndNotas" rows="2" placeholder="Ej: disponible solo zona norte"></textarea>
@@ -667,9 +667,10 @@ tr:last-child td{border-bottom:none}
     <label>Servicio / ruta</label><input id="mAsigServicio" placeholder="Ej: Ruta empresarial Chía AM">
     <label>Zona de operación</label><select id="mAsigZona"></select>
     <div class="grid g2" style="margin-top:4px">
-      <div><label>Hora inicio servicio</label><input type="time" id="mAsigInicio"></div>
-      <div><label>Hora fin servicio</label><input type="time" id="mAsigFin"></div>
+      <div><label>Hora inicio servicio</label><input type="time" id="mAsigInicio" oninput="UI.asigPreview()"></div>
+      <div><label>Hora fin servicio</label><input type="time" id="mAsigFin" oninput="UI.asigPreview()"></div>
     </div>
+    <div class="note" id="mAsigPreview" style="font-weight:600"></div>
     <p class="note" id="mAsigRangoNota">Opcional: deja vacío para asignar el turno completo. Usa rangos para dividir el turno entre varios servicios.</p>
     <label>Notas</label><textarea id="mAsigNotas" rows="2"></textarea>
     <label id="mAsigConfirmBox" style="display:none;align-items:center;gap:9px;margin-top:14px;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--text);cursor:pointer">

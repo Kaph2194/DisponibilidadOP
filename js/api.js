@@ -440,7 +440,9 @@ const Api = {
                  vehiculos!inner(placa, tipo_vehiculo, numero_interno),
                  asignaciones(id, servicio, zona, notas, estado, inicio, fin, observacion_baja, asignada_por)`)
         .eq('estado', 'validada')
-        .gte('inicio', desdeISO).lt('inicio', hastaISO)
+        // Operación 24/7: todo turno que se cruce con el día, incluidos los que
+        // empezaron la noche anterior y terminan en la madrugada de este día
+        .lt('inicio', hastaISO).gt('fin', desdeISO)
         .neq('asignaciones.estado', 'cancelada')
         .order('inicio').range(from, from + PAGE - 1);
       if (error) { console.error('lean error:', error.message); break; }

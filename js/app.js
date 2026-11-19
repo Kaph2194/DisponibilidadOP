@@ -78,7 +78,14 @@ function fmtHora(iso){
   const d=new Date(iso);
   return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
-function fmtRango(r){ return fmtFecha(r.inicio)+' · '+fmtHora(r.inicio)+' → '+fmtHora(r.fin); }
+// Operación 24/7: si el turno termina otro día, se muestra ese día ("Jue 19/11 · 22:00 → Vie 20/11 06:00 🌙")
+function cruzaMedianoche(r){ return isoLocal(new Date(r.inicio)) !== isoLocal(new Date(new Date(r.fin).getTime()-1)); }
+function fmtRango(r){
+  return fmtFecha(r.inicio)+' · '+fmtHora(r.inicio)+' → '
+    + (cruzaMedianoche(r) ? fmtFecha(r.fin)+' '+fmtHora(r.fin)+' 🌙' : fmtHora(r.fin));
+}
+// Fecha ISO local del día siguiente (sin pasar por UTC)
+function diaSiguienteISO(fecha){ const d=new Date(fecha+'T12:00:00'); d.setDate(d.getDate()+1); return isoLocal(d); }
 function horasEntre(a,b){ return Math.round((new Date(b)-new Date(a))/36e5*10)/10; }
 function estadoBadge(r){
   if (r.asignacion_id) return '<span class="badge b-asignada">Asignada</span>';
@@ -170,6 +177,26 @@ function placaRestringida(placa, fecha){
   if (!m) return false;
   return pp.digitos.includes(parseInt(m[1],10));
 }
+// Horario de la restricción para servicio especial: 5:30 a 21:00
+const PYP_DESDE = [5,30], PYP_HASTA = [21,0];
+// Tramos del turno [inicio, fin) que caen en pico y placa, día por día.
+// Un turno de 22:00 a 05:00 nunca choca; uno de 22:00 a 07:00 choca de 05:30 a 07:00
+// del día siguiente, y solo si la placa está restringida ESE día.
+function pypConflictos(placa, inicioISO, finISO){
+  const ini=new Date(inicioISO), fin=new Date(finISO), out=[];
+  if (isNaN(ini)||isNaN(fin)||fin<=ini) return out;
+  const dia=new Date(ini); dia.setHours(12,0,0,0);
+  for (let k=0; k<8 && dia.getTime()-12*36e5 < fin.getTime(); k++, dia.setDate(dia.getDate()+1)){
+    const f=isoLocal(dia);
+    if (!placaRestringida(placa, f)) continue;
+    const a=new Date(dia); a.setHours(...PYP_DESDE,0,0);
+    const b=new Date(dia); b.setHours(...PYP_HASTA,0,0);
+    const desde=new Date(Math.max(a,ini)), hasta=new Date(Math.min(b,fin));
+    if (desde<hasta) out.push({ fecha:f, desde, hasta });
+  }
+  return out;
+}
+function pypTexto(c){ return c.map(x=>`${fmtFecha(x.fecha)} ${fmtHora(x.desde)}–${fmtHora(x.hasta)}`).join(', '); }
 
 // ══════════ Navegación por rol ══════════
 const NAV = {
@@ -394,7 +421,7 @@ const UI = {
 
     const rows = dias.map(f=>{
       let finDia=f;
-      if (nd.end<=nd.start){ const d=new Date(f+'T00:00:00'); d.setDate(d.getDate()+1); finDia=d.toISOString().slice(0,10); }
+      if (nd.end<=nd.start) finDia=diaSiguienteISO(f); // turno partido: termina al día siguiente
       return { conductor_id:ME.conductor.id, vehiculo_id:vehId,
                inicio:tsLocal(f,HOURS[nd.start]), fin:tsLocal(finDia,HOURS[nd.end]),
                localidad:$('ndLoc').value, notas:$('ndNotas').value.trim() };
@@ -563,8 +590,10 @@ const UI = {
       'Fecha': isoLocal(new Date(r.inicio)),
       'Día': DIAS[new Date(r.inicio).getDay()],
       'Hora inicio': fmtHora(r.inicio),
+      'Fecha fin': isoLocal(new Date(r.fin)),
       'Hora fin': fmtHora(r.fin),
       'Horas': horasEntre(r.inicio, r.fin),
+      'Turno partido': cruzaMedianoche(r) ? 'Sí' : 'No',
       'Placa': r.placa,
       'N° interno': r.numero_interno||'',
       'Tipo vehículo': r.tipo_vehiculo||'',
@@ -611,7 +640,7 @@ const UI = {
     const vehId=$('acVehiculo').value;
     if (!vehId) return toast('El conductor no tiene vehículos vinculados. Pide al coordinador o jefe que lo vincule.', true);
     let finDia=f;
-    if (ac.end<=ac.start){ const d=new Date(f+'T00:00:00'); d.setDate(d.getDate()+1); finDia=d.toISOString().slice(0,10); }
+    if (ac.end<=ac.start) finDia=diaSiguienteISO(f); // turno partido: termina al día siguiente
     const { error } = await Api.crearDisponibilidades([{
       conductor_id: $('acConductor').value, vehiculo_id: vehId,
       inicio: tsLocal(f,HOURS[ac.start]), fin: tsLocal(finDia,HOURS[ac.end]),
@@ -828,20 +857,28 @@ const UI = {
     $('prKpiVal').textContent=todas.length;
     $('prKpiAsig').textContent=k.asig.length;
     $('prKpiSin').textContent=k.sin.length;
-    $('prCount').textContent = rows.length!==todas.length ? `Mostrando ${rows.length} de ${todas.length}` : '';
+    const vienen = todas.filter(r=>isoLocal(new Date(r.inicio))<fechaSel).length;
+    const siguen = todas.filter(r=>isoLocal(new Date(r.inicio))===fechaSel && cruzaMedianoche(r)).length;
+    $('prCount').textContent = [
+      rows.length!==todas.length ? `Mostrando ${rows.length} de ${todas.length}` : '',
+      vienen ? `🌙 ${vienen} turno(s) vienen de la noche anterior` : '',
+      siguen ? `🌙 ${siguen} turno(s) continúan en la madrugada siguiente` : ''
+    ].filter(Boolean).join(' · ');
     const { sin, asig } = UI._prClasificar(rows);
     const esAdmin = ME.profile.role === 'admin';
 
     $('prPendientes').innerHTML = sin.length ? sin.map(r=>{
       const al = docAlerta(r);
       const bloqueado = al.nivel==='block';
-      const restringida = placaRestringida(r.placa, fechaSel);
+      const pyp = pypConflictos(r.placa, r.inicio, r.fin);
+      const restringida = pyp.length>0;
       const cart = carteraAlerta(r);
       const info = `${r.placa} · ${fmtRango(r)}`;
       // Solo admin ve el detalle de documentos y cartera en la operación
       return `<div class="item" style="${bloqueado?'border-color:var(--red);border-left:3px solid var(--red)':(restringida||cart.hay?'border-left:3px solid var(--amber)':'')}"><div class="info">
         <div class="t1"><span class="placa sm">${escHtml(r.placa)}</span> &nbsp;${escHtml(r.conductor_nombre)}
-          ${restringida?'<span class="badge b-pendiente" style="margin-left:6px">🚦 Pico y placa hoy</span>':''}</div>
+          ${restringida?`<span class="badge b-pendiente" style="margin-left:6px" title="Restricción 5:30–21:00 en los tramos indicados">🚦 Pico y placa ${escHtml(pypTexto(pyp))}</span>`:''}
+          ${UI._prEtiquetaNoche(r, fechaSel)}</div>
         <div class="t2">${fmtRango(r)} · ${escHtml(r.localidad||'—')} · ${escHtml(r.tipo_vehiculo||'')} ${escHtml(r.numero_interno||'')} · Tel: ${escHtml(r.telefono||'—')}</div>
         ${r.asignacion_id?`<div class="t2" style="color:var(--amber)">Parcial: ${Math.round((r.horas_asignadas||0)*10)/10}h asignadas de ${horasEntre(r.inicio,r.fin)}h</div>`:''}
         ${esAdmin?`<div style="margin-top:6px">${docBadge(r)}${cart.hay?` <span class="badge b-cancelada" style="margin-left:4px">${cart.texto}</span>`:''}</div>`:''}
@@ -863,7 +900,7 @@ const UI = {
       const info = `${r.placa} · ${fmtRango(r)}`;
       return `<div class="item" style="flex-direction:column;align-items:stretch"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="t1"><span class="placa sm">${escHtml(r.placa)}</span> &nbsp;${escHtml(r.conductor_nombre)} &nbsp;<span style="color:var(--faint)">${fmtRango(r)}</span></div>
+          <div class="t1"><span class="placa sm">${escHtml(r.placa)}</span> &nbsp;${escHtml(r.conductor_nombre)} &nbsp;<span style="color:var(--faint)">${fmtRango(r)}</span> ${UI._prEtiquetaNoche(r, fechaSel)}</div>
           <div class="t2">Turno: ${totalH}h · Asignado: ${asigH}h${libre>0?` · <span style="color:var(--amber)">Libre: ${libre}h</span>`:' · <span style="color:var(--green)">Turno completo ✓</span>'}</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -883,6 +920,14 @@ const UI = {
       </div></div>`;
     }).join('')
       : `<div class="empty">${rows.length!==todas.length?'Ninguna programada coincide con la búsqueda.':'Ninguna asignación creada aún para este día.'}</div>`;
+  },
+
+  // Etiqueta para turnos partidos respecto al día que se está programando
+  _prEtiquetaNoche(r, fechaSel){
+    const diaIni = isoLocal(new Date(r.inicio));
+    if (diaIni < fechaSel) return `<span class="badge b-sin" style="margin-left:6px">🌙 Viene de ${escHtml(fmtFecha(r.inicio))}</span>`;
+    if (cruzaMedianoche(r)) return `<span class="badge b-sin" style="margin-left:6px">🌙 Termina ${escHtml(fmtFecha(r.fin))} ${fmtHora(r.fin)}</span>`;
+    return '';
   },
 
   // Servicios activos de una disponibilidad, en orden de hora
@@ -909,10 +954,12 @@ const UI = {
       'Documento': r.documento||'',
       'Teléfono': r.telefono||'',
       'Localidad': r.localidad||'',
+      'Fecha fin': isoLocal(new Date(r.fin)),
       'Turno inicio': fmtHora(r.inicio),
       'Turno fin': fmtHora(r.fin),
       'Horas turno': horasEntre(r.inicio, r.fin),
-      'Pico y placa': placaRestringida(r.placa, fecha) ? 'Sí' : 'No'
+      'Turno partido': cruzaMedianoche(r) ? (isoLocal(new Date(r.inicio))<fecha ? 'Viene de la noche anterior' : 'Termina al día siguiente') : 'No',
+      'Pico y placa': pypTexto(pypConflictos(r.placa, r.inicio, r.fin)) || 'No'
     });
     const estadoProg = r => {
       if (!r.asignacion_id) return 'Sin asignar';
@@ -924,13 +971,13 @@ const UI = {
       const servs = UI._prServicios(r);
       if (!servs.length){
         detalle.push({ ...base(r), 'Programación':'Sin asignar', 'Servicio / ruta':'', 'Zona':'',
-          'Servicio inicio':'', 'Servicio fin':'', 'Horas servicio':'', 'Notas servicio':'', 'Notas disponibilidad': r.notas||'' });
+          'Servicio fecha':'', 'Servicio inicio':'', 'Servicio fin':'', 'Horas servicio':'', 'Notas servicio':'', 'Notas disponibilidad': r.notas||'' });
         return;
       }
       servs.forEach(s=>{
         const ini = s.inicio || r.inicio, fin = s.fin || r.fin;
         detalle.push({ ...base(r), 'Programación': estadoProg(r), 'Servicio / ruta': s.servicio||'', 'Zona': s.zona||'',
-          'Servicio inicio': fmtHora(ini), 'Servicio fin': fmtHora(fin), 'Horas servicio': horasEntre(ini, fin),
+          'Servicio fecha': isoLocal(new Date(ini)), 'Servicio inicio': fmtHora(ini), 'Servicio fin': fmtHora(fin), 'Horas servicio': horasEntre(ini, fin),
           'Notas servicio': s.notas||'', 'Notas disponibilidad': r.notas||'' });
       });
     });
@@ -946,7 +993,10 @@ const UI = {
       { 'Concepto':'Validadas del día', 'Valor': rows.length },
       { 'Concepto':'Asignadas', 'Valor': k.asig.length },
       { 'Concepto':'Sin asignar o con horas libres', 'Valor': k.sin.length },
-      { 'Concepto':'Pico y placa', 'Valor': pp.texto },
+      { 'Concepto':'Pico y placa del día', 'Valor': pp.texto + (pp.aplica?' (5:30–21:00)':'') },
+      { 'Concepto':'Pico y placa del día siguiente', 'Valor': picoYPlacaDe(diaSiguienteISO(fecha)).texto },
+      { 'Concepto':'Turnos que vienen de la noche anterior', 'Valor': rows.filter(r=>isoLocal(new Date(r.inicio))<fecha).length },
+      { 'Concepto':'Turnos que terminan al día siguiente', 'Valor': rows.filter(r=>isoLocal(new Date(r.inicio))===fecha && cruzaMedianoche(r)).length },
       { 'Concepto':'Búsqueda aplicada', 'Valor': ($('prBuscar')?.value||'').trim() || '—' },
       { 'Concepto':'Exportado', 'Valor': new Date().toLocaleString('es-CO') + ' · ' + (ME.profile.full_name||ME.session.user.email) }
     ];
@@ -970,7 +1020,10 @@ const UI = {
     if (finISO)    $('mAsigFin').value   = fmtHora(finISO);
     // Nota del rango
     if (inicioISO && finISO)
-      $('mAsigRangoNota').textContent = `Turno del conductor: ${fmtHora(inicioISO)} → ${fmtHora(finISO)}. Puedes asignar un rango parcial para dejar horas libres para otro servicio.`;
+      $('mAsigRangoNota').textContent = `Turno del conductor: ${fmtRango({inicio:inicioISO, fin:finISO})}. Puedes asignar un rango parcial para dejar horas libres para otro servicio.`
+        + (cruzaMedianoche({inicio:inicioISO, fin:finISO}) ? ' Turno partido: las horas antes del inicio del turno se toman del día siguiente.' : '');
+    UI._asigPlaca = ((UI._prAll||[]).find(r=>r.id===dispId)||{}).placa || '';
+    UI.asigPreview();
     const alerta = $('mAsigAlerta');
     if (bloqueado){
       alerta.style.display='block';
@@ -985,39 +1038,55 @@ const UI = {
     }
     $('mAsignar').classList.add('on');
   },
+  // Convierte las horas del modal en fechas reales dentro del turno.
+  // Devuelve {dIni,dFin} | {} (turno completo) | {error}
+  _asigCalcRango(){
+    const rango = UI._asigRango || {};
+    // Fecha LOCAL del inicio del turno (no UTC: un turno de las 20:00 en Bogotá
+    // ya es el día siguiente en UTC)
+    const fechaBase = rango.inicio ? isoLocal(new Date(rango.inicio)) : null;
+    const hIni = $('mAsigInicio').value, hFin = $('mAsigFin').value;
+    if ((hIni && !hFin) || (!hIni && hFin))
+      return { error:'Indica hora de inicio y de fin del servicio, o deja ambas vacías para el turno completo' };
+    if (!fechaBase || !hIni || !hFin) return {};
+    const dIni = new Date(fechaBase + 'T' + hIni + ':00');
+    // Turno partido (ej. 22:00→06:00): un servicio de 02:00 pertenece al día siguiente
+    if (dIni < new Date(rango.inicio)) dIni.setDate(dIni.getDate()+1);
+    // Si fin ≤ inicio en horas, el servicio cruza medianoche
+    const dFin = new Date(dIni); const [fh,fm] = hFin.split(':').map(Number);
+    dFin.setHours(fh, fm, 0, 0);
+    if (dFin <= dIni) dFin.setDate(dFin.getDate()+1);
+    // Comparar como fechas (Supabase devuelve "+00:00", toISOString ".000Z")
+    if (rango.fin && (dIni < new Date(rango.inicio) || dFin > new Date(rango.fin)))
+      return { error:`El servicio (${hIni}→${hFin}) debe estar dentro del turno del conductor (${fmtRango(rango)})` };
+    return { dIni, dFin };
+  },
+
+  // Vista previa en el modal: fechas reales del servicio y aviso de pico y placa
+  asigPreview(){
+    const el = $('mAsigPreview'); if (!el) return;
+    const rango = UI._asigRango || {};
+    const rg = UI._asigCalcRango();
+    if (rg.error){ el.style.color='var(--red)'; el.textContent='⚠ '+rg.error; return; }
+    const ini = rg.dIni || (rango.inicio && new Date(rango.inicio));
+    const fin = rg.dFin || (rango.fin && new Date(rango.fin));
+    if (!ini || !fin){ el.textContent=''; return; }
+    const txt = `Servicio: ${fmtRango({inicio:ini, fin:fin})} · ${horasEntre(ini,fin)} h`;
+    const pyp = pypConflictos(UI._asigPlaca, ini, fin);
+    el.style.color = pyp.length ? 'var(--amber)' : 'var(--muted)';
+    el.textContent = txt + (pyp.length ? ` · 🚦 Pico y placa: ${pypTexto(pyp)}` : '');
+  },
+
   async confirmarAsignacion(){
     const serv=$('mAsigServicio').value.trim();
     if (!serv) return toast('Escribe el servicio o ruta', true);
     if (ctxAsignarBloqueado && !$('mAsigConfirm').checked)
       return toast('Marca la casilla para confirmar el despacho pese a los documentos pendientes', true);
 
-    // Calcular timestamps del rango seleccionado
-    const rango = UI._asigRango || {};
-    // Fecha LOCAL del inicio del turno (antes se tomaba en UTC: un turno de las
-    // 20:00 en Bogotá quedaba con la fecha del día siguiente y no se podía asignar)
-    const fechaBase = rango.inicio ? isoLocal(new Date(rango.inicio)) : null;
-    let inicioTS = null, finTS = null;
-    const hIni = $('mAsigInicio').value, hFin = $('mAsigFin').value;
-    if ((hIni && !hFin) || (!hIni && hFin))
-      return toast('Indica hora de inicio y de fin del servicio, o deja ambas vacías para el turno completo', true);
-    if (fechaBase && hIni && hFin){
-      const dIni = new Date(fechaBase + 'T' + hIni + ':00');
-      // Turno nocturno (ej. 22:00→06:00): un servicio de 02:00 pertenece al día siguiente
-      if (rango.inicio && dIni < new Date(rango.inicio)) dIni.setDate(dIni.getDate()+1);
-      // Si fin < inicio en horas, el servicio cruza medianoche
-      const dFin = new Date(dIni); const [fh,fm] = hFin.split(':').map(Number);
-      dFin.setHours(fh, fm, 0, 0);
-      if (dFin <= dIni) dFin.setDate(dFin.getDate()+1);
-      inicioTS = dIni.toISOString();
-      finTS = dFin.toISOString();
-      // Validar que esté dentro del turno del conductor
-      if (rango.inicio && rango.fin){
-        // Comparar como fechas: Supabase devuelve "…+00:00" y toISOString "….000Z";
-        // como texto, un servicio que termina justo al final del turno se rechazaba
-        if (dIni < new Date(rango.inicio) || dFin > new Date(rango.fin))
-          return toast(`El rango (${hIni}→${hFin}) debe estar dentro del turno del conductor (${fmtHora(rango.inicio)}→${fmtHora(rango.fin)})`, true);
-      }
-    }
+    const rg = UI._asigCalcRango();
+    if (rg.error) return toast(rg.error, true);
+    const inicioTS = rg.dIni ? rg.dIni.toISOString() : null;
+    const finTS    = rg.dFin ? rg.dFin.toISOString() : null;
 
     const notas = $('mAsigNotas').value.trim() + (ctxAsignarBloqueado?' [DESPACHADO CON DOCS PENDIENTES]':'');
     const { error } = await Api.asignar(ctxAsignar, serv, $('mAsigZona').value, notas.trim(), inicioTS, finTS);
@@ -1691,14 +1760,14 @@ function ndResumen(){
   const fin = nd.end!==null?HOURS[nd.end]:'…';
   const noct = nd.end!==null && nd.end<=nd.start;
   const horas = nd.end!==null ? (nd.end>nd.start?nd.end-nd.start:24-nd.start+nd.end) : 0;
-  el.innerHTML=`Franja: <b>${HOURS[nd.start]} → ${fin}</b>${noct?' <b>(cruza medianoche 🌙)</b>':''}
+  el.innerHTML=`Franja: <b>${HOURS[nd.start]} → ${fin}</b>${noct?' <b>🌙 turno partido: termina al día siguiente</b>':''}
     ${nd.end!==null?` · <b>${horas} h</b>`:''} · Días seleccionados: <b>${nd.dias.size}</b>`;
 }
 function acResumen(){
   const el=$('acResumen');
   if (ac.start===null){ el.innerHTML='Selecciona la franja.'; return; }
   const fin=ac.end!==null?HOURS[ac.end]:'…';
-  el.innerHTML=`Franja: <b>${HOURS[ac.start]} → ${fin}</b>${ac.end!==null&&ac.end<=ac.start?' (cruza medianoche 🌙)':''}`;
+  el.innerHTML=`Franja: <b>${HOURS[ac.start]} → ${fin}</b>${ac.end!==null&&ac.end<=ac.start?' <b>🌙 turno partido: termina al día siguiente</b>':''}`;
 }
 function buildDiasRail(){
   const base=$('ndFecha').value||hoyISO();
@@ -1707,7 +1776,7 @@ function buildDiasRail(){
   const el=$('ndDias'); el.innerHTML='';
   for(let k=0;k<7;k++){
     const d=new Date(d0); d.setDate(d.getDate()+k);
-    const iso=d.toISOString().slice(0,10);
+    const iso=isoLocal(d);
     const b=document.createElement('button');
     b.type='button'; b.textContent=DIAS[d.getDay()]+' '+d.getDate();
     b.className=nd.dias.has(iso)?'sel':'';

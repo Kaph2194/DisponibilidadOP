@@ -140,6 +140,16 @@ La alerta aparece en varios puntos:
 
 El bloqueo no es absoluto (operaciones puede despachar bajo su responsabilidad con la confirmación), pero nunca pasa desapercibido. Si prefieres que sea un bloqueo **total** (imposible asignar hasta regularizar), se puede endurecer con una sola línea; dime y lo cambio.
 
+## Operación 24/7: turnos partidos
+
+La operación no para, así que un turno puede **empezar hoy en la noche y terminar mañana en la madrugada** (ej. 22:00 → 06:00):
+
+- **Subir disponibilidad:** si la hora de fin es menor o igual a la de inicio, el turno es *partido* y termina al día siguiente. El día marcado es el día en que **empieza**.
+- **Programación:** el día muestra **todo turno que se cruce con él**, incluidos los que empezaron la noche anterior (etiqueta 🌙 *Viene de…*) y los que siguen en la madrugada siguiente (🌙 *Termina…*). Así, al programar el viernes ves también los carros disponibles de 00:00 a 06:00 que subieron turno el jueves. Es la misma disponibilidad: si ya se asignó el jueves, aparece asignada también el viernes.
+- **Asignar:** al escribir las horas del servicio, el modal muestra la fecha real (ej. *Vie 20/11 · 02:00 → 05:00*); las horas antes del inicio del turno se toman del día siguiente.
+- **Fechas:** los rangos se muestran con el día de fin cuando cambia (*Jue 19/11 · 22:00 → Vie 20/11 06:00 🌙*). Los Excel traen *Fecha fin* y *Turno partido*.
+- **Validación y Reportería** siguen contando cada turno en el día en que empieza, para no contarlo dos veces.
+
 ## Exportar a Excel (Programación y Validación)
 
 Ambas pantallas tienen un botón **⬇ Exportar Excel** y un buscador (placa, conductor, documento, N° interno o localidad). El Excel contiene **lo que se ve en pantalla**: si hay una búsqueda activa, solo esos resultados.
@@ -153,7 +163,7 @@ Las columnas traen filtro automático y ancho ajustado. No requiere cambios en l
 
 ## Pico y placa (servicio transporte especial)
 
-La programación muestra automáticamente el **pico y placa del día** para servicio de transporte especial en Bogotá: un banner con los dos dígitos restringidos, y cada vehículo cuya placa esté restringida se marca con 🚦 "Pico y placa hoy". La regla es la rotación oficial de parejas de dígitos (lun-sáb, 5:30am–9:00pm; domingos y festivos no aplica). Incluye un enlace a pyphoy.com para verificar. Si el gobierno cambia el decreto (próxima revisión oficial: enero 2027), basta actualizar el ancla en `js/app.js`. Los festivos están cargados para 2026 y 2027 (constante `FESTIVOS`); a finales de 2027 hay que añadir los de 2028.
+La programación muestra automáticamente el **pico y placa del día** para servicio de transporte especial en Bogotá: un banner con los dos dígitos restringidos, y cada vehículo se marca con 🚦 y **el tramo exacto de su turno que cae en la restricción** (5:30–21:00), día por día. Un turno de 22:00 a 05:00 nunca queda marcado; uno de 22:00 a 07:00 se marca de 05:30 a 07:00 solo si la placa está restringida el día siguiente. Al asignar, el modal avisa si el servicio elegido cae en pico y placa. La regla es la rotación oficial de parejas de dígitos (lun-sáb, 5:30am–9:00pm; domingos y festivos no aplica). Incluye un enlace a pyphoy.com para verificar. Si el gobierno cambia el decreto (próxima revisión oficial: enero 2027), basta actualizar el ancla en `js/app.js`. Los festivos están cargados para 2026 y 2027 (constante `FESTIVOS`); a finales de 2027 hay que añadir los de 2028.
 
 ## Conductores anclados a placa
 
