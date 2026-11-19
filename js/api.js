@@ -406,7 +406,7 @@ const Api = {
     while (true) {
       const { data, error } = await sb.from('disponibilidades')
         .select(`id, conductor_id, vehiculo_id, inicio, fin, localidad, notas, estado,
-                 motivo_cancelacion,
+                 motivo_cancelacion, validada_at,
                  conductores!inner(nombre, documento, telefono),
                  vehiculos!inner(placa, tipo_vehiculo, numero_interno)`)
         .gte('inicio', desdeISO).lt('inicio', hastaISO)
@@ -461,8 +461,12 @@ const Api = {
         observacion_baja: d.asignaciones?.find(a=>a.estado!=='cancelada')?.observacion_baja||null,
         asignaciones_json: d.asignaciones?.filter(a=>a.estado!=='cancelada')||[],
         total_asignaciones: d.asignaciones?.filter(a=>a.estado!=='cancelada').length||0,
-        horas_asignadas: d.asignaciones?.filter(a=>a.estado!=='cancelada'&&a.inicio)
-          .reduce((s,a)=>(new Date(a.fin)-new Date(a.inicio))/36e5+s, 0)||0,
+        // Una asignación sin rango (inicio/fin vacíos) cubre el turno completo
+        horas_asignadas: Math.min((new Date(d.fin)-new Date(d.inicio))/36e5,
+          (d.asignaciones||[]).filter(a=>a.estado!=='cancelada')
+            .reduce((s,a)=>s + (a.inicio&&a.fin
+              ? (new Date(a.fin)-new Date(a.inicio))
+              : (new Date(d.fin)-new Date(d.inicio)))/36e5, 0)),
         docs_criticos_pendientes: 0, docs_criticos_vencidos: 0,
         docs_vencidos: 0, docs_sin_cargar: 0, detalle_criticos: null,
         cartera_periodos_vencidos: 0, cartera_valor_vencido: 0
